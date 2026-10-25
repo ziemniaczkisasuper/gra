@@ -2,7 +2,7 @@ import { DEFAULT_SEED } from '../data/game';
 import { ARENA_M0 } from '../data/maps';
 import { createDummy } from '../entities/dummy';
 import { setCell, tickCounters, type Entity } from '../entities/entity';
-import { tryStep } from '../entities/movement';
+import { freshPlayerMoveMemory, stepPlayer, type PlayerMoveMemory } from '../entities/player-move';
 import { createPlayer, PLAYER_STEP_COSTS, type Player } from '../entities/player';
 import { toDir8, type ActionState } from '../input/actions';
 import { parseMap, type TileMap } from '../world/tilemap';
@@ -42,6 +42,18 @@ export type System = (state: GameState, actions: ActionState, dtMs: number) => v
 export type SystemPhase = 'player' | 'world';
 
 const systems: Record<SystemPhase, System[]> = { player: [], world: [] };
+
+/** Player input memory between ticks (QA-M0-001 buffer). Not saved; reset on pause. */
+const moveMemory = new WeakMap<GameState, PlayerMoveMemory>();
+const memoryOf = (s: GameState): PlayerMoveMemory => {
+  let m = moveMemory.get(s);
+  if (!m) moveMemory.set(s, (m = freshPlayerMoveMemory()));
+  return m;
+};
+/** Forget buffered / previous directions (call on pause: §1.11 resets every input). */
+export function resetPlayerMoveMemory(state: GameState): void {
+  moveMemory.delete(state);
+}
 
 export function registerSystem(s: System, phase: SystemPhase = 'world'): () => void {
   systems[phase].push(s);
@@ -96,8 +108,14 @@ export function placePlayer(state: GameState, x: number, y: number): boolean {
 export function stepGame(state: GameState, actions: ActionState, dtMs: number): void {
   for (const s of systems.player) s(state, actions, dtMs);
   const p = state.player;
-  tryStep(p, toDir8(actions.move), state.map, PLAYER_STEP_COSTS, state.tick, (x, y) =>
-    isOccupied(state, x, y, p),
+  stepPlayer(
+    p,
+    toDir8(actions.move),
+    memoryOf(state),
+    state.map,
+    state.tick,
+    { costs: PLAYER_STEP_COSTS },
+    (x, y) => isOccupied(state, x, y, p),
   );
   for (const s of systems.world) s(state, actions, dtMs);
   tickCounters(p);

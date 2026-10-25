@@ -1,6 +1,6 @@
 import './style.css';
 import { EventBus, type GameEvents, type PauseDetail, type SaveTrigger } from './core/events';
-import { stepGame, type GameState } from './core/game';
+import { resetPlayerMoveMemory, stepGame, type GameState } from './core/game';
 import { GameLoop } from './core/loop';
 import { DEFAULT_MAP, MAPS, type MapId } from './data/maps';
 import { M0 } from './data/mechanics-m0';
@@ -209,6 +209,7 @@ const ui = createUi(
 
 bus.on('paused', ({ reason, detail }) => {
   input.reset();
+  resetPlayerMoveMemory(state); // buffered step directions too (§1.11)
   if (reason !== 'auto') save(reason); // auto-pause saves in autoPause()
   ui.hideCountdown();
   ui.showPaused(reason, detail);
