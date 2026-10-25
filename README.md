@@ -130,9 +130,9 @@ registerSaveSection<CombatSave>('combat', {
 - Wyzwalacz auto-pauzy D (trafienie + 2 s bez wejścia): `input.idleMs` jest gotowe; po trafieniu wywołajcie auto-pauzę
   (np. przez zdarzenie na busie – do dodania razem z walką).
 - Parametry tylko z `data/mechanics-m0.ts`, glify/kolory tylko z `data/style.ts` (`DUMMY_TELEGRAPH_GLYPH` itd.).
-- **Profil walki z URL (QA / balans):** `?combat=m0|m1&depth=1..3` (`integration/combat-url.ts`, działa też w buildzie).
-  Dotyczy tylko gry bez stanu walki (nowa gra albo zapis sprzed walki). Wczytany stan walki ma pierwszeństwo – wtedy
-  w konsoli pojawia się ostrzeżenie (wyczyść zapis, żeby użyć wartości z URL). Funkcji `setCombatProfile` w `combat/` nie ma.
+- **Profil i głębokość walki:** zapis walki ich nie trzyma, więc `main.ts` po każdym wczytaniu (start, import) woła
+  `setCombatProfile` z Gameplay przez `integration/combat-url.ts`. Domyślnie jest `m0` / głębokość 1. Helper QA / balans:
+  `?combat=m0|m1&depth=1..3` działa w dev i w buildzie, także dla wczytanego zapisu. W M1 strefa ustawi profil przy wejściu.
 
 ## Kontrakty (LUZ) – wpięcie w Silnik (`src/integration/contracts.ts`)
 - `main.ts` → `installContracts(emit)` po `installCombat()`; import modułu rejestruje sekcję zapisu `contracts` (z `src/contracts/save.ts`)

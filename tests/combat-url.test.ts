@@ -1,8 +1,8 @@
-// ?combat=&depth= test helper (src/integration/combat-url.ts).
+// ?combat=&depth= helper (src/integration/combat-url.ts) on top of Gameplay's setCombatProfile.
 import { describe, expect, it } from 'vitest';
-import { getCombat, peekCombat, enemyMaxHp } from '../src/combat/combat';
+import { enemyMaxHp, getCombat, peekCombat } from '../src/combat/combat';
 import '../src/combat/install';
-import { COMBAT_M1 } from '../src/data/combat-m0';
+import { COMBAT_M0, COMBAT_M1 } from '../src/data/combat-m0';
 import { applyCombatParams, parseCombatParams } from '../src/integration/combat-url';
 import { gameFromSave, parseSaveText, saveToJson, snapshot } from '../src/save';
 
@@ -21,24 +21,25 @@ describe('?combat=&depth=', () => {
 
   it('new game: combat starts with the profile and depth (enemy HP scaled)', () => {
     const s = gameFromSave(null);
-    expect(applyCombatParams(s, { profile: 'm1', depth: 2 })).toBe(true);
-    const c = peekCombat(s)!;
+    applyCombatParams(s, { profile: 'm1', depth: 2 });
+    const c = getCombat(s); // lazy init uses the recorded options
     expect(c.cfg).toBe(COMBAT_M1);
-    expect(c.profile).toBe('m1');
-    expect(c.depth).toBe(2);
+    expect(c).toMatchObject({ profile: 'm1', depth: 2 });
     expect(enemyMaxHp(c, 'crawler')).toBe(Math.round(80 * COMBAT_M1.DEPTH_HP_MULT[1]!));
-    // kept through save/load
-    const b = gameFromSave(parseSaveText(saveToJson(snapshot(s, 1))));
-    expect(peekCombat(b)).toMatchObject({ profile: 'm1', depth: 2 });
   });
 
-  it('loaded combat state wins (warning, nothing changed)', () => {
+  it('after a load (save holds no profile) it is applied again – as main.ts does', () => {
     const s = gameFromSave(null);
+    applyCombatParams(s, { profile: 'm1', depth: 2 });
     getCombat(s);
-    const w: string[] = [];
-    expect(applyCombatParams(s, { profile: 'm1' }, (m) => w.push(m))).toBe(false);
-    expect(peekCombat(s)!.profile).toBe('m0');
-    expect(w).toHaveLength(1);
-    expect(applyCombatParams(s, null)).toBe(false);
+    const b = gameFromSave(parseSaveText(saveToJson(snapshot(s, 1))));
+    applyCombatParams(b, { profile: 'm1', depth: 2 });
+    expect(peekCombat(b) ?? getCombat(b)).toMatchObject({ profile: 'm1', depth: 2 });
+  });
+
+  it('no parameters = m0 / depth 1', () => {
+    const s = gameFromSave(null);
+    applyCombatParams(s, null);
+    expect(getCombat(s)).toMatchObject({ cfg: COMBAT_M0, profile: 'm0', depth: 1 });
   });
 });

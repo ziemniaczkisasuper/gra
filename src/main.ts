@@ -74,7 +74,8 @@ const mapRows = MAPS[(mapParam && mapParam in MAPS ? mapParam : DEFAULT_MAP) as 
 // write-protected until the player decides (save:loadFailed, saveApi.resolveLoadFailure()).
 const loaded = loadGame(store, { mapRows });
 let state: GameState = loaded.state;
-// QA / balance helper: ?combat=m0|m1&depth=1..3 (new game only, see integration/combat-url.ts).
+// Combat profile + depth (Gameplay setCombatProfile; not in the save): m0 / depth 1, or the
+// QA / balance helper ?combat=m0|m1&depth=1..3 (integration/combat-url.ts). Re-applied on import.
 const combatParams = parseCombatParams(location.search);
 applyCombatParams(state, combatParams);
 // Save protection (README „Przypomnienie o eksporcie”): UI imports `saveApi` from save/api.ts.
@@ -157,7 +158,9 @@ function autoPause(detail?: PauseDetail): void {
 
 function applySave(data: SaveData): void {
   try {
-    state = gameFromSave(data, { mapRows }); // all-or-nothing: on error keep the current game
+    const next = gameFromSave(data, { mapRows }); // all-or-nothing: on error keep the current game
+    applyCombatParams(next, combatParams);
+    state = next;
   } catch {
     ui.toast(STRINGS.importFailed);
     return;
