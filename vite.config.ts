@@ -2,8 +2,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  // Relative base: the build works from any GitHub Pages path (/<repo>/) or locally.
-  base: './',
+  // Cloudflare Pages serves the game from the domain root.
+  base: '/',
   build: {
     target: 'es2020',
     outDir: 'dist',
