@@ -144,6 +144,7 @@ const loop = new GameLoop({
   requestFrame: (cb) => requestAnimationFrame(cb),
   cancelFrame: (id) => cancelAnimationFrame(id),
 });
+void import('./render/fx-layer').then((m) => m.installFxLayer(bus, loop, reduceMotion()));
 
 function save(trigger: SaveTrigger): void {
   const data = snapshot(state, Date.now());

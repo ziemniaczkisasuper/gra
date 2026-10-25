@@ -8,7 +8,49 @@ export type PauseReason = 'menu' | 'text' | 'auto';
 export type PauseDetail = 'hitWhileAway';
 export type SaveTrigger = PauseReason | 'manual' | 'import';
 
-export interface GameEvents {
+// --- FX trigger events (graf/assety-m1.md §13 + v1.1/v1.2 triggers) that do NOT exist yet.
+// Emitted by Gameplay / Silnik / UI, never by the FX layer (render/fx-layer.ts only subscribes).
+// Combat triggers (hits, kills, death, telegraph start/strike/interrupt, alert, Shock, Dash,
+// Shock Pulse, Buddy Drone, boss charge lane) are read by the FX layer from getCombat(state)
+// .events / combat state / getBossChargeLane (walka-m1.md §8) – they are not duplicated here.
+// Payload fields: entityId – entity the FX anchors to; cells – zone / band cells; cell – a single
+// cell (shaft, terminal). World grid coordinates; times in ms.
+
+export interface FxCell {
+  x: number;
+  y: number;
+}
+export interface FxTriggerEvents {
+  // Evacuation lift (Silnik / Gameplay; cell = the shaft '<')
+  levelStart: { cell: FxCell };
+  cooldownEnd: { cell: FxCell };
+  evacCallStart: { cell: FxCell };
+  evacCallInterrupted: { cell: FxCell };
+  evacCallDone: { cell: FxCell; depth: 1 | 2 | 3 };
+  /** R6 A: alertedIds = enemies alarmed by the arrival (fx_alert on each). */
+  liftArrived: { cell: FxCell; alertedIds: readonly number[] };
+  playerEvacuated: { cell: FxCell };
+  liftDeparted: { cell: FxCell };
+  // Boss Rail Guardian (Gameplay; entityId = boss, its top-left cell)
+  bossIntro: { entityId: number };
+  /** Boss telegraphs carry the kind the combat state cannot tell (swing / charge). */
+  bossTelegraph: { entityId: number; kind: 'bossSwing' | 'bossCharge'; cells: readonly FxCell[] };
+  chargeWallHit: { entityId: number; cells: readonly FxCell[] };
+  bossStunned: { entityId: number };
+  bossStunEnd: { entityId: number };
+  bossSummon: { entityId: number; cells: readonly FxCell[] };
+  summonedSpawn: { entityId: number };
+  bossDefeated: { entityId: number; cell: FxCell };
+  // Base screen (UI / base module; base screen coordinates)
+  basePrint: Record<string, never>;
+  baseArriveByLift: Record<string, never>;
+  newContractAvailable: Record<string, never>;
+  terminalOpened: { cell: FxCell };
+  gridFragmentLit: { cells: readonly FxCell[] };
+  baseUpgradeBuilt: { cells: readonly FxCell[] };
+}
+
+export interface GameEvents extends FxTriggerEvents {
   paused: { reason: PauseReason; detail?: PauseDetail };
   /** Resume countdown: emitted at start and whenever the shown digit changes (3·2·1). */
   countdown: { msLeft: number; digit: number; from: PauseReason };

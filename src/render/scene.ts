@@ -2,6 +2,7 @@ import type { GameState } from '../core/game';
 import { TILE_GLYPHS, UNKNOWN_GLYPH } from '../data/style';
 import type { Entity } from '../entities/entity';
 import { computeCamera } from './camera';
+import { drawFx } from './fx-layer';
 import type { GlyphRenderer } from './glyph-renderer';
 
 /**
@@ -44,4 +45,5 @@ export function renderScene(r: GlyphRenderer, state: GameState, alpha: number): 
     r.draw(e.glyph, v.x * r.cellW - camPxX, v.y * r.cellH - camPxY);
   for (const e of state.entities) drawAt(e, visualPos(e, state.tick, alpha));
   drawAt(state.player, pv);
+  drawFx(r, state, camPxX, camPxY); // FX layer (render/fx-layer.ts) over the world
 }
