@@ -1,0 +1,14 @@
+node_modules
+dist
+*.log
+# tooling / reports
+coverage
+test-results
+**/.results/
+playwright-report
+blob-report
+.vite
+*.tsbuildinfo
+.DS_Store
+# downloaded full fonts (re-fetched by `npm run font:subset`)
+scripts/fonts-src/

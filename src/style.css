@@ -1,0 +1,480 @@
+/* Colours and font come from src/data/style.ts via CSS custom properties (ui/css-vars.ts).
+   No colour literals here. Sizes in CSS px (≈ dp). Owner of the UI rules: PROG / UI i Menu. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./assets/fonts/JetBrainsMono-Regular-subset.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./assets/fonts/JetBrainsMono-Bold-subset.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --edge: 16px;
+  --hud-font: 16px;
+  --atk-size: 72px;
+  --ctl-hit: 8px;
+  --hud-band: 72px;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: var(--ui-font);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  display: block;
+  touch-action: none;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui button {
+  pointer-events: auto;
+  font: inherit;
+  color: inherit;
+  background: var(--ui-panel-bg);
+  border: 1px solid var(--ui-frame);
+  border-radius: 0;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#ui button:active {
+  border-color: var(--ui-accent);
+  color: var(--ui-text-strong);
+}
+
+/* ---- HUD (top-left, overlay – takes no map rows) */
+.hud {
+  position: absolute;
+  top: calc(var(--edge) * 0.75 + var(--safe-t));
+  left: calc(var(--edge) * 0.75 + var(--safe-l));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--hud-font);
+  line-height: 1.25;
+  white-space: pre;
+}
+.hud-row {
+  align-self: flex-start;
+  padding: 2px 8px;
+  background: var(--ui-hud-bg);
+}
+.hud-row.hp .hp-label,
+.hud-row.hp .hp-num {
+  color: var(--ui-text);
+  font-weight: 700;
+}
+.hud-row.hp .hp-bar {
+  font-weight: 700;
+}
+.hud-row.hp[data-level='high'] .hp-bar {
+  color: var(--ui-accent);
+}
+.hud-row.hp[data-level='mid'] .hp-bar {
+  color: var(--ui-warning);
+}
+.hud-row.hp[data-level='low'] .hp-bar {
+  color: var(--ui-danger);
+  animation: hp-blink 0.8s steps(1) infinite;
+}
+.hud-row.hp.hit {
+  animation: hp-shake 0.25s linear;
+  outline: 1px solid var(--ui-danger);
+}
+@keyframes hp-blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes hp-shake {
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+/* ---- pause button [||] (top-right) */
+.pause-btn {
+  position: absolute;
+  top: calc(var(--edge) * 0.75 + var(--safe-t));
+  right: calc(var(--edge) + var(--safe-r));
+  font-weight: 700;
+  padding: 0 8px !important;
+  opacity: 0.85;
+}
+
+.hint {
+  position: absolute;
+  left: calc(12px + var(--safe-l));
+  bottom: calc(10px + var(--safe-b));
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+/* ---- touch controls */
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+}
+.touch-controls.visible {
+  display: block;
+}
+.stick-zone {
+  position: absolute;
+  top: calc(var(--hud-band) + var(--safe-t));
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+.left-handed .stick-zone {
+  left: auto;
+  right: 0;
+}
+.stick-base,
+.stick-knob {
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: none;
+  pointer-events: none;
+}
+.stick-base.active,
+.stick-knob.active {
+  display: block;
+}
+.stick-base {
+  box-sizing: border-box;
+  border: 1px dashed var(--ui-frame);
+  border-radius: 50%;
+  background: var(--ui-control-bg);
+  opacity: 0.8;
+}
+.stick-mark {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-frame);
+}
+.stick-mark.on {
+  color: var(--ui-text-strong);
+}
+.stick-knob {
+  box-sizing: border-box;
+  width: 48px;
+  height: 48px;
+  line-height: 46px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ui-text-strong);
+  border: 1px solid var(--ui-text);
+  background: var(--ui-control-active-bg);
+}
+.ctl-btn {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--ui-text);
+  background: var(--ui-control-bg);
+  border: 1px solid var(--ui-frame);
+  pointer-events: auto;
+  touch-action: none;
+  opacity: 0.85;
+}
+.ctl-btn::before {
+  /* hit area larger than the visible button */
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ctl-hit));
+}
+.ctl-btn[hidden] {
+  display: none;
+}
+.atk-btn {
+  width: var(--atk-size);
+  height: var(--atk-size);
+  right: calc(var(--edge) + var(--safe-r));
+  bottom: calc(var(--edge) + var(--safe-b));
+  font-size: 18px;
+  letter-spacing: 0.05em;
+}
+.atk-btn.held {
+  color: var(--ui-text-strong);
+  border-color: var(--ui-accent);
+  background: var(--ui-control-active-bg);
+}
+.left-handed .atk-btn,
+.left-handed .use-btn {
+  right: auto;
+  left: calc(var(--edge) + var(--safe-l));
+}
+/* M1 placeholders (hidden in M0): USE above ATK, skills in an arc, Med-Patch above skills */
+.use-btn {
+  width: 56px;
+  height: 48px;
+  right: calc(var(--edge) + var(--safe-r) + (var(--atk-size) - 56px) / 2);
+  bottom: calc(var(--edge) + var(--safe-b) + var(--atk-size) + 16px);
+}
+.skill-slots[hidden],
+.med-btn[hidden] {
+  display: none;
+}
+
+/* ---- pause menu */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--ui-overlay-bg);
+  pointer-events: auto;
+}
+.overlay.visible {
+  display: flex;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 260px;
+  max-width: min(420px, 92vw);
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 20px;
+  background: var(--ui-panel-bg);
+  border: 1px solid var(--ui-frame);
+}
+.panel h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 28px;
+  letter-spacing: 0.2em;
+  color: var(--ui-text-strong);
+}
+.panel h1::before {
+  content: '== ';
+  color: var(--ui-frame);
+}
+.panel h1::after {
+  content: ' ==';
+  color: var(--ui-frame);
+}
+.panel .sub {
+  text-align: center;
+  font-size: 13px;
+}
+.panel .resume {
+  font-weight: 700;
+  border-color: var(--ui-accent) !important;
+  color: var(--ui-text-strong) !important;
+}
+.panel .row {
+  display: flex;
+  gap: 8px;
+}
+.panel .row button {
+  flex: 1;
+  font-size: 13px;
+  padding: 0 8px;
+}
+.panel textarea {
+  font: 12px var(--ui-font);
+  background: var(--ui-bg);
+  color: inherit;
+  border: 1px solid var(--ui-frame);
+  min-height: 56px;
+  resize: vertical;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ---- resume countdown 3 · 2 · 1 */
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-weight: 700;
+  white-space: pre;
+}
+.countdown.visible {
+  display: flex;
+}
+.countdown-line {
+  padding: 4px 16px;
+  background: var(--ui-hud-bg);
+  border: 1px solid var(--ui-frame);
+  font-size: 32px;
+  color: var(--ui-frame);
+}
+.cd-digit.now {
+  font-size: 64px;
+  color: var(--ui-text-strong);
+}
+.cd-digit.past {
+  opacity: 0.35;
+}
+
+/* ---- text window (notes, terminals) */
+.text-backdrop {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--ui-text-backdrop);
+  pointer-events: auto;
+  touch-action: none;
+}
+.text-backdrop.visible {
+  display: flex;
+}
+.text-window {
+  box-sizing: border-box;
+  width: min(560px, calc(100% - 32px - var(--safe-l) - var(--safe-r)));
+  max-height: calc(100% - 24px - var(--safe-t) - var(--safe-b));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--ui-panel-bg);
+  border: 3px double var(--ui-frame);
+  color: var(--ui-text);
+}
+.text-head,
+.text-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.text-page,
+.text-hint {
+  font-size: 13px;
+}
+.text-body {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.text-next,
+.text-close {
+  font-weight: 700;
+}
+.text-next {
+  margin-left: auto;
+  border-color: var(--ui-accent) !important;
+}
+.text-next[hidden] {
+  display: none;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  top: calc(20px + var(--safe-t));
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: var(--ui-panel-bg);
+  border: 1px solid var(--ui-frame);
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.toast.visible {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .hint,
+  .text-hint {
+    display: none;
+  }
+}
+
+/* Low landscape screens (< ~330 px high: 17 rows barely fit) – compact HUD and controls. */
+@media (max-height: 360px) {
+  :root {
+    --edge: 10px;
+    --hud-font: 14px;
+    --atk-size: 60px;
+    --hud-band: 56px;
+  }
+  .hud-row {
+    padding: 1px 6px;
+  }
+  .text-body {
+    font-size: 16px;
+  }
+  .text-window {
+    padding: 8px 12px;
+  }
+}
+
+/* Pause menu on phones in landscape (≤ 420 px high): tighter, still ≥ 48 px buttons. */
+@media (max-height: 420px) {
+  .panel {
+    padding: 12px;
+    gap: 6px;
+  }
+  .panel h1 {
+    font-size: 22px;
+  }
+  .panel textarea {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-row.hp[data-level='low'] .hp-bar,
+  .hud-row.hp.hit {
+    animation: none;
+  }
+}
