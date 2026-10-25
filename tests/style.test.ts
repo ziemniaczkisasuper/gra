@@ -109,7 +109,7 @@ const FONT_SUBSETS = FONT_FILES.map((f) => ({
  * Silnik). Until then the renderer falls back to system monospace for these cells. Keep this list
  * EMPTY in a release build.
  */
-const PENDING_SUBSET: readonly string[] = ['\u00A4' /* ¤ */, '\u00A7' /* § */, '\u03A0' /* Π */];
+const PENDING_SUBSET: readonly string[] = [];
 const cpLabel = (c: string): string =>
   `${c} U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
 

@@ -135,9 +135,26 @@ registerSaveSection<CombatSave>('combat', {
 - Font i rozmiar komórki: `data/style.ts` (`FONT`), minimalny widok 31×17 / 17×21 z `mechanics-m0.ts`.
 
 ## Font
-JetBrains Mono (SIL OFL 1.1), podzbiór znaków ASCII + kilka symboli z `graf/styl-ascii.md`, w `src/assets/fonts/`
-(~9 KB na krój), licencja w `public/fonts/OFL.txt`. Bez CDN; gdy font się nie wczyta w 1,5 s – systemowy monospace.
-Nowe znaki spoza podzbioru wymagają ponownego `pyftsubset` (patrz `m0-status.md`).
+JetBrains Mono (SIL OFL 1.1), podzbiór znaków w `src/assets/fonts/` (`JetBrainsMono-{Regular,Bold}-subset.woff2`, po ok. 9 KB,
+lista znaków w `SUBSET.txt`), licencja w `public/fonts/OFL.txt`. Bez CDN; gdy font się nie wczyta w 1,5 s – systemowy monospace.
+
+**Przegenerowanie: `npm run font:subset`** (`scripts/font-subset.mjs`, pakiet npm `subset-font` – HarfBuzz WASM, bez Pythona).
+- Zestaw znaków: ASCII 0x20–0x7E + **automatycznie** wszystkie znaki spoza ASCII z literałów tekstowych w `src/data/**/*.ts`
+  i `src/**/strings*.ts` (komentarze są pomijane) + stała lista `EXTRA_CHARS` w skrypcie.
+- Pełne fonty źródłowe (oficjalne, tag `v2.304` z github.com/JetBrains/JetBrainsMono) skrypt pobiera sam do `scripts/fonts-src/`
+  (katalog w `.gitignore`), więc po świeżym checkout wystarczy `npm install && npm run font:subset` (wymaga internetu przy pierwszym uruchomieniu).
+- `npm run font:subset -- --check` – tylko wypisuje zebrane znaki i ich pliki, bez pobierania i zapisu.
+- Po dodaniu nowego znaku w danych: uruchom skrypt i zacommituj fonty + `SUBSET.txt`; test `tests/style.test.ts` sprawdza pokrycie.
+- Bez cech OpenType (ligatury kodu wyłączone) – canvas rysuje jeden glif na komórkę.
+
+## Praca równoległa – lokalne repo git
+Repozytorium jest **tylko lokalne** (bez remote, nic nie jest wypychane). Tożsamość ustawiona w tym repo: `GRA PROG <gra-prog@localhost>`.
+- Przed i po większej zmianie: `git add -A && git commit -m "[dział] opis"` (np. `[Gameplay] boss Rail Guardian`, `[UI] HUD v2`).
+  Jeśli w drzewie są niezacommitowane zmiany innego działu, commituj **tylko swoje pliki**: `git add <ścieżki> && git commit -m "[dział] …"`.
+- Przed zapisem pliku, który edytuje ktoś inny: `git diff <plik>` (i `git log -p -3 <plik>`), żeby zobaczyć cudze zmiany.
+- Przy konflikcie **nie nadpisuj cudzych zmian**: połącz ręcznie albo zostaw i zgłoś właścicielowi pliku. Bez `git reset --hard`,
+  `git checkout -- <plik>` czy `git stash` na cudzych zmianach.
+- `.gitignore`: `node_modules`, `dist`, raporty testów (`test-results`, `playwright-report`, `**/.results/`), `scripts/fonts-src/`.
 
 ## Wdrożenie (później)
 `.github/workflows/deploy.yml` – gotowy, **nieaktywny** (tylko `workflow_dispatch`, trigger `push` zakomentowany).

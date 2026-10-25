@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint src tests",
-    "format": "prettier --write src"
+    "format": "prettier --write src",
+    "font:subset": "node scripts/font-subset.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -19,6 +20,7 @@
     "eslint": "^10.13.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.9.10",
+    "subset-font": "^2.9.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.5",
