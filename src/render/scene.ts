@@ -4,6 +4,7 @@ import type { Entity } from '../entities/entity';
 import { computeCamera } from './camera';
 import { drawFx } from './fx-layer';
 import type { GlyphRenderer } from './glyph-renderer';
+import { setFrameCamera } from './screen';
 
 /**
  * Visual position of an entity: logic jumps whole cells instantly; the renderer tweens the
@@ -29,6 +30,7 @@ export function renderScene(r: GlyphRenderer, state: GameState, alpha: number): 
   // Snap the camera to whole device pixels to avoid shimmering glyphs.
   const camPxX = Math.round(cam.x * r.cellW);
   const camPxY = Math.round(cam.y * r.cellH);
+  setFrameCamera(camPxX, camPxY, r); // cellToScreen() for DOM UI (render/screen.ts)
 
   r.clear();
   const x0 = Math.max(0, Math.floor(cam.x));
