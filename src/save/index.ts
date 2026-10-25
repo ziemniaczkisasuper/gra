@@ -6,6 +6,7 @@ export * from './schema';
 export * from './storage';
 export * from './codec';
 export * from './sections';
+export * from './reminder';
 
 const FACING_VEC: Record<Facing, { x: number; y: number }> = {
   N: { x: 0, y: -1 },
@@ -38,6 +39,13 @@ export function snapshot(state: GameState, now: number): SaveData {
     rngState: state.rng.getStates(),
     player: { x: state.player.x, y: state.player.y, facing: vecToFacing(state.player.facing) },
   };
+  const m = state.meta;
+  data.playtimeMs = m.playtimeMs;
+  data.playtimeSinceExportMs = m.playtimeSinceExportMs;
+  if (m.lastExportAt !== null) data.lastExportAt = m.lastExportAt;
+  if (m.exportReminderSnoozedUntil !== null)
+    data.exportReminderSnoozedUntil = m.exportReminderSnoozedUntil;
+  if (m.iosHintHiddenUntil !== null) data.iosHintHiddenUntil = m.iosHintHiddenUntil;
   for (const name of saveSectionNames()) data[name] = getSaveSection(name)!.serialize(state);
   return data;
 }
@@ -67,6 +75,14 @@ export function gameFromSave(data: SaveData | null, opts: NewGameOptions = {}): 
   g.player.facing = facingToVec(data.player.facing);
   g.tick = data.tick;
   g.rng.setStates(data.rngState);
+  g.meta = {
+    playtimeMs: data.playtimeMs ?? 0,
+    // older saves: no counter yet → everything played so far counts as "since export"
+    playtimeSinceExportMs: data.playtimeSinceExportMs ?? data.playtimeMs ?? 0,
+    lastExportAt: data.lastExportAt ?? null,
+    exportReminderSnoozedUntil: data.exportReminderSnoozedUntil ?? null,
+    iosHintHiddenUntil: data.iosHintHiddenUntil ?? null,
+  };
   try {
     applySections(g, data);
   } catch (e) {

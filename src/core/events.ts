@@ -1,4 +1,5 @@
 import type { ContractEvents } from '../contracts/types';
+import type { ExportReminder } from '../save/reminder';
 
 /** Why the simulation is paused. 'text' = in-world text window (UI shows its own window). */
 export type PauseReason = 'menu' | 'text' | 'auto';
@@ -13,6 +14,12 @@ export interface GameEvents {
   /** pause('auto') hit an existing 'text' or 'menu' pause: reason kept, state still saved by the caller. */
   autoPauseSuppressed: { current: PauseReason };
   saved: { savedAt: number; trigger: SaveTrigger };
+  /** Time to export the save (UI queues its window until the base). See README „Przypomnienie o eksporcie”. */
+  'save:exportReminder': ExportReminder;
+  /** Save exported via saveApi (lastExportAt set, playtimeSinceExport reset). */
+  'save:exported': { method: 'file' | 'code' };
+  /** Export reminder snoozed until `until` (Unix ms). */
+  'save:exportSnoozed': { until: number };
   // --- BASE contracts (src/contracts/, owner LUZ / Pracownik 2). Emitted by the caller from the
   // events returned by applyContractEvent() / refillBoard() – the module itself is pure.
   'contract:offered': ContractEvents['contract:offered'];

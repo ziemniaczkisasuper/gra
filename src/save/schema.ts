@@ -19,11 +19,26 @@ export interface SaveData {
   /** Generator states: { default: base generator, <stream name>: state } (uint32 each). */
   rngState: Record<string, number>;
   player: { x: number; y: number; facing: Facing };
+  /** Optional save-protection fields (no version bump – absent = defaults, save/reminder.ts). */
+  playtimeMs?: number;
+  playtimeSinceExportMs?: number;
+  lastExportAt?: number;
+  exportReminderSnoozedUntil?: number;
+  iosHintHiddenUntil?: number;
   /** Module sections (opaque to the engine, validated by the module's deserialize). */
   combat?: unknown;
   contracts?: unknown;
   [section: string]: unknown;
 }
+
+/** Optional non-negative numeric top-level fields (save protection). */
+export const OPTIONAL_NUMBER_KEYS = [
+  'playtimeMs',
+  'playtimeSinceExportMs',
+  'lastExportAt',
+  'exportReminderSnoozedUntil',
+  'iosHintHiddenUntil',
+] as const;
 
 export class SaveError extends Error {
   override name = 'SaveError';
@@ -108,6 +123,11 @@ export function validate(raw: Raw, opts: ValidateOptions = {}): SaveData {
     rngState,
     player: { x: p.x, y: p.y, facing: p.facing as Facing },
   };
+  for (const k of OPTIONAL_NUMBER_KEYS) {
+    if (raw[k] === undefined) continue;
+    if (!isNum(raw[k]) || (raw[k] as number) < 0) throw new SaveError(`Bad ${k}`);
+    out[k] = raw[k] as number;
+  }
   for (const [name, value] of Object.entries(raw)) {
     if (CORE_SAVE_KEYS.has(name)) continue;
     const section = getSaveSection(name);

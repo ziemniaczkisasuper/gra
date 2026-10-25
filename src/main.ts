@@ -12,14 +12,13 @@ import { TouchSource } from './input/touch';
 import { pickFontPx } from './render/camera';
 import { GlyphRenderer } from './render/glyph-renderer';
 import { renderScene } from './render/scene';
-import { getCombatHud, takeAutoPauseRequest } from './combat/combat';
+import { getCombatHud, setCombatReduceMotion, takeAutoPauseRequest } from './combat/combat';
 import { installCombat } from './combat/install';
 import './contracts/save'; // registers the 'contracts' save section BEFORE readSave()/gameFromSave()
 import { installContracts } from './integration/contracts';
 import { renderCombatOverlay } from './combat/overlay';
 import {
   decodeSaveCode,
-  encodeSaveCode,
   gameFromSave,
   readSave,
   snapshot,
@@ -29,15 +28,22 @@ import {
 } from './save';
 import { downloadSaveFile, pickSaveFile } from './save/files';
 import { memoryStore } from './save/storage';
+import { initSaveApi } from './save/api';
+import { isIosNotStandalone, requestPersistentStorage } from './save/storage-env';
 import { applyCssVars } from './ui/css-vars';
 import { createUi } from './ui/overlay';
-import { loadUiSettings } from './ui/settings';
+import { loadUiSettings, reduceMotion } from './ui/settings';
 
 // ---- wiring (DOM lives here and in render/ui; game logic in core/world/entities is DOM-free)
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const uiRoot = document.getElementById('ui') as HTMLElement;
 applyCssVars(); // UI colours/font from data/style.ts → CSS custom properties
 const uiSettings = loadUiSettings(); // ?lefty=1 (left-handed mirror), ?touch=1 (force touch UI)
+// Reduce motion: OS setting / ?reduceMotion=1|0 / localStorage; drives combat fx and UI anims.
+reduceMotion().subscribe((on) => {
+  setCombatReduceMotion(on); // telegraph 'x' steady instead of blinking
+  uiRoot.classList.toggle('reduce-motion', on); // HP blink / hit shake off (style.css)
+});
 
 function getStore(): KeyValueStore {
   try {
@@ -65,6 +71,14 @@ const fromSave = (s: SaveData | null): GameState => {
   }
 };
 let state: GameState = fromSave(readSave(store));
+// Save protection (README „Przypomnienie o eksporcie”): UI imports `saveApi` from save/api.ts.
+const saveApi = initSaveApi({
+  getState: () => state,
+  store,
+  bus,
+  iosNotStandalone: () => isIosNotStandalone(),
+  download: downloadSaveFile,
+});
 
 installCombat(); // PROG / Gameplay: combat systems (combat/README.md)
 // LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
@@ -152,7 +166,7 @@ const ui = createUi(
       loop.pause('menu');
     },
     onResume: () => loop.resume(),
-    onExportFile: () => downloadSaveFile(snapshot(state, Date.now())),
+    onExportFile: () => void saveApi.exportFile(),
     onImportFile: () => {
       pickSaveFile().then(
         (d) => d && applySave(d),
@@ -160,7 +174,7 @@ const ui = createUi(
       );
     },
     onCopyCode: async () => {
-      const code = await encodeSaveCode(snapshot(state, Date.now()));
+      const code = await saveApi.exportCode();
       try {
         await navigator.clipboard.writeText(code);
         ui.toast(STRINGS.codeCopied);
@@ -241,6 +255,8 @@ async function boot(): Promise<void> {
   }
   fit();
   loop.start();
+  void requestPersistentStorage().then((p) => console.info(`storage.persist: ${p}`));
+  saveApi.checkExportReminder(); // after load; UI may also call saveApi.checkExportReminder()
 }
 void boot();
 

@@ -6,6 +6,7 @@ import { tryStep } from '../entities/movement';
 import { createPlayer, PLAYER_STEP_COSTS, type Player } from '../entities/player';
 import { toDir8, type ActionState } from '../input/actions';
 import { parseMap, type TileMap } from '../world/tilemap';
+import { freshSaveMeta, type SaveMeta } from '../save/reminder';
 import { GameRng } from './rng';
 
 /** Whole simulation state. Pure data + logic: never touches DOM or canvas. */
@@ -25,6 +26,8 @@ export interface GameState {
   entities: Entity[];
   /** Loaded save-section values of modules without their own apply() (save/sections.ts). */
   sections: Record<string, unknown>;
+  /** Playtime + export bookkeeping (save/reminder.ts); saved as optional top-level fields. */
+  meta: SaveMeta;
 }
 
 /** A simulation system (hook for Gameplay: combat, AI...). Mutates state only. */
@@ -67,6 +70,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     player: createPlayer(spawn.x, spawn.y),
     entities: spawns.filter((s) => s.ch === 'E').map((s) => createDummy(s.x, s.y)),
     sections: {},
+    meta: freshSaveMeta(),
   };
   if (opts.player) placePlayer(state, opts.player.x, opts.player.y);
   return state;
@@ -99,4 +103,7 @@ export function stepGame(state: GameState, actions: ActionState, dtMs: number): 
   tickCounters(p);
   for (const e of state.entities) tickCounters(e);
   state.tick++;
+  // Playtime = unpaused simulation time only (stepGame never runs while paused/counting down).
+  state.meta.playtimeMs += dtMs;
+  state.meta.playtimeSinceExportMs += dtMs;
 }

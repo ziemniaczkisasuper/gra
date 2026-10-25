@@ -51,6 +51,13 @@ const EXTRA_CHARS = [
   '\u25C6', // ◆
 ];
 
+/**
+ * Polish prose in data files (designer notes such as `note:` / `interact:` in src/data/fx-m1.ts)
+ * is never drawn – game text is English. Polish letters and Polish quotes „ ” are therefore not
+ * collected from sources. A glyph that is really drawn must be in EXTRA_CHARS or a non-Polish char.
+ */
+const PROSE_ONLY = new Set([...'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ„”']);
+
 // ---- collect characters from string literals -------------------------------------------------
 function walk(dir, pred, out = []) {
   for (const name of readdirSync(dir)) {
@@ -137,6 +144,7 @@ export function collectChars() {
         const cp = c.codePointAt(0);
         if (cp <= 0x7e || cp < 0xa0) continue; // ASCII / controls
         if (/\p{M}|\p{C}/u.test(c)) continue;
+        if (PROSE_ONLY.has(c)) continue; // Polish prose (docs), see PROSE_ONLY
         if (!found.has(c)) found.set(c, relative(ROOT, f));
       }
     }
@@ -145,7 +153,11 @@ export function collectChars() {
   for (let c = 0x20; c <= 0x7e; c++) chars.add(String.fromCharCode(c));
   for (const c of found.keys()) chars.add(c);
   for (const c of EXTRA_CHARS) chars.add(c);
-  return { chars: [...chars].sort((a, b) => a.codePointAt(0) - b.codePointAt(0)), found, files: uniqFiles };
+  return {
+    chars: [...chars].sort((a, b) => a.codePointAt(0) - b.codePointAt(0)),
+    found,
+    files: uniqFiles,
+  };
 }
 
 const label = (c) => `${c} U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
@@ -167,7 +179,9 @@ async function main() {
   const check = process.argv.includes('--check');
   const { chars, found, files } = collectChars();
   const nonAscii = chars.filter((c) => c.codePointAt(0) > 0x7e);
-  console.log(`scanned ${files.length} files; ${chars.length} chars (${nonAscii.length} non-ASCII)`);
+  console.log(
+    `scanned ${files.length} files; ${chars.length} chars (${nonAscii.length} non-ASCII)`,
+  );
   for (const c of nonAscii) console.log(`  ${label(c)}  ${found.get(c) ?? '(EXTRA_CHARS)'}`);
   if (check) return;
 
@@ -183,7 +197,9 @@ async function main() {
     });
     writeFileSync(join(OUT_DIR, face.out), out);
     const sha = createHash('sha256').update(full).digest('hex').slice(0, 12);
-    console.log(`${face.out}: ${(out.length / 1024).toFixed(1)} KB (source ${face.src} sha256 ${sha}…)`);
+    console.log(
+      `${face.out}: ${(out.length / 1024).toFixed(1)} KB (source ${face.src} sha256 ${sha}…)`,
+    );
   }
   writeFileSync(
     join(OUT_DIR, 'SUBSET.txt'),

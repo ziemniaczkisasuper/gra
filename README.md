@@ -144,6 +144,23 @@ registerSaveSection<CombatSave>('combat', {
   Okno tekstu: `loop.pause('text')` przy otwarciu, `loop.resume()` przy zamknięciu.
 - Font i rozmiar komórki: `data/style.ts` (`FONT`), minimalny widok 31×17 / 17×21 z `mechanics-m0.ts`.
 
+## Przypomnienie o eksporcie (`save/api.ts`, `save/storage-env.ts`)
+
+Ochrona zapisu (iOS Safari potrafi skasować localStorage po ~7 dniach bez wizyty). Kontrakt z PROG / UI i Menu:
+
+- **Zdarzenie** `save:exportReminder` – jedno zdarzenie z listą powodów:
+  `{ reasons: Array<'interval' | 'neverExported' | 'iosNotStandalone'>; daysSinceExport: number | null; playtimeSinceExportMs: number }`.
+  Emitowane przy starcie gry (po wczytaniu) i przez `saveApi.checkExportReminder()`; może przyjść w dowolnym momencie – UI samo rysuje okno (np. dopiero w bazie).
+- **Progi** (`src/data/save-reminder.ts`): `interval` = ≥ 3 dni od eksportu **i** ≥ 30 min gry od eksportu; `neverExported` = ≥ 30 min gry; drzemka 24 h; ukrycie podpowiedzi iOS 7 dni.
+- **`saveApi`** (import z `src/save/api.ts`, inicjalizuje `main.ts`):
+  - `exportFile(): Promise<void>` – pobiera .json; `exportCode(): Promise<string>` – zwraca kod (schowek robi UI). Oba: `lastExportAt = now`, `playtimeSinceExportMs = 0`, zapis, `save:exported { method: 'file' | 'code' }`.
+  - `snoozeExportReminder()` – `exportReminderSnoozedUntil = now + 24 h`, zapis, `save:exportSnoozed { until }`. W drzemce nie ma powodów `interval`/`neverExported`.
+  - `dismissIosHint()` – ukrywa powód `iosNotStandalone` na 7 dni, **niezależnie** od drzemki (drzemka nie ukrywa podpowiedzi iOS, a ukrycie iOS nie wycisza eksportu).
+  - `checkExportReminder(): ExportReminder | null`.
+- **Środowisko** (`storage-env.ts`): `isIos()` (UA iPhone|iPad|iPod albo MacIntel z maxTouchPoints > 1), `isStandalone()` (`navigator.standalone` lub `(display-mode: standalone)`), `isIosNotStandalone()`, `persistState` = wynik `navigator.storage.persist()` wołanego przy starcie (`granted`/`denied`/`unsupported`, log w konsoli).
+- **Pola zapisu** (opcjonalne, top-level, bez zmiany wersji): `playtimeMs`, `playtimeSinceExportMs`, `lastExportAt`, `exportReminderSnoozedUntil`, `iosHintHiddenUntil` (`state.meta`). Czas gry liczą tylko ticki symulacji (pauza i odliczanie się nie liczą). Brak pola = wartość domyślna; stary zapis bez `playtimeSinceExportMs` przyjmuje `playtimeMs`.
+- Testy: `tests/save-reminder.test.ts` (wstrzykiwany zegar).
+
 ## Font
 JetBrains Mono (SIL OFL 1.1), podzbiór znaków w `src/assets/fonts/` (`JetBrainsMono-{Regular,Bold}-subset.woff2`, po ok. 9 KB,
 lista znaków w `SUBSET.txt`), licencja w `public/fonts/OFL.txt`. Bez CDN; gdy font się nie wczyta w 1,5 s – systemowy monospace.
@@ -154,6 +171,8 @@ lista znaków w `SUBSET.txt`), licencja w `public/fonts/OFL.txt`. Bez CDN; gdy f
   z `graf/styl-ascii.md` v1.2 i `graf/assety-m1.md` bez polskich liter i cudzysłowów; `♥` celowo pominięte – brak w foncie).
 - Pełne fonty źródłowe (oficjalne, tag `v2.304` z github.com/JetBrains/JetBrainsMono) skrypt pobiera sam do `scripts/fonts-src/`
   (katalog w `.gitignore`), więc po świeżym checkout wystarczy `npm install && npm run font:subset` (wymaga internetu przy pierwszym uruchomieniu).
+- Polskie litery i cudzysłowy „ ” ze źródeł są **pomijane** (`PROSE_ONLY` w skrypcie): to opisy dla grafików/logiki
+  (np. `note`, `interact` w `src/data/fx-m1.ts`), nie tekst gry (gra jest po angielsku).
 - `npm run font:subset -- --check` – tylko wypisuje zebrane znaki i ich pliki, bez pobierania i zapisu.
 - Po dodaniu nowego znaku w danych: uruchom skrypt i zacommituj fonty + `SUBSET.txt`; test `tests/style.test.ts` sprawdza pokrycie.
 - Bez cech OpenType (ligatury kodu wyłączone) – canvas rysuje jeden glif na komórkę.

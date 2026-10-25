@@ -25,6 +25,12 @@ export const CORE_SAVE_KEYS: ReadonlySet<string> = new Set([
   'tick',
   'rngState',
   'player',
+  // optional save-protection fields (save/reminder.ts)
+  'playtimeMs',
+  'playtimeSinceExportMs',
+  'lastExportAt',
+  'exportReminderSnoozedUntil',
+  'iosHintHiddenUntil',
 ]);
 
 const sections = new Map<string, SaveSection<unknown>>();
