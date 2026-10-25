@@ -93,7 +93,8 @@ const saveApi = initSaveApi({
   download: downloadSaveFile,
 });
 
-installCombat(); // PROG / Gameplay: combat systems (combat/README.md)
+// PROG / Gameplay: combat systems (combat/README.md); combat + boss events also go to the bus.
+installCombat((t, p) => (bus.emit as (t: string, p: unknown) => void)(t, p));
 // LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
 installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
 // TODO(base, M1): after evacuation / death reprint call refillContractsAtBase(state, ctx, emit)
@@ -125,12 +126,23 @@ const loop = new GameLoop({
     if (input.idleMs >= M0.AUTOPAUSE_IDLE_MS) autoPause(away.detail); // trigger E
   },
   countdownMs: M0.RESUME_COUNTDOWN_MS,
-  onResumeStart: () => input.reset(), // keys held before RESUME do nothing
+  // Keys held before RESUME do nothing – except leaving 'tutorial': the held direction moves.
+  onResumeStart: (from) => {
+    if (from !== 'tutorial') input.reset();
+  },
+  isVisible: () => document.visibilityState !== 'hidden', // loop.activeMs() (UI timers)
   countdownTick() {
     // Input is read during the countdown; new presses act in the first tick after it.
     if (input.collect()) loop.pause('menu'); // Esc/P cancels the countdown
   },
   idle() {
+    if (loop.pauseReason === 'tutorial') {
+      // ui-m1 §11.4: any direction resumes at once (no countdown), ATK / skills are ignored.
+      const a = input.sample();
+      if (a.pause) loop.pause('menu');
+      else if (a.move.x !== 0 || a.move.y !== 0) loop.resume();
+      return;
+    }
     // While paused only Esc/P (here) and RESUME / Enter (ui) resume. In 'text' the text
     // window owns the keyboard (Esc closes it) – the pause edge must not resume there.
     if (input.sample().pause && loop.pauseReason !== 'text') loop.resume();
@@ -218,6 +230,12 @@ const ui = createUi(
 );
 
 bus.on('paused', ({ reason, detail }) => {
+  if (reason === 'tutorial') {
+    // Prologue freeze: held directions stay (exception to the §1.11 input reset), no overlay.
+    ui.hidePaused();
+    ui.hideCountdown();
+    return;
+  }
   input.reset();
   resetPlayerMoveMemory(state); // buffered step directions too (§1.11)
   if (reason !== 'auto') save(reason); // auto-pause saves in autoPause()

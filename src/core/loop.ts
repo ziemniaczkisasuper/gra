@@ -15,8 +15,10 @@ export interface LoopOptions {
   countdownMs?: number;
   /** Number of digits shown during the countdown (3 → 3·2·1). */
   countdownDigits?: number;
-  /** Called by resume() before the countdown starts (reset input). */
-  onResumeStart?: () => void;
+  /** Called by resume() before the countdown starts (reset input). `from` = reason left. */
+  onResumeStart?: (from: PauseReason) => void;
+  /** Page visible? (activeMs stops while hidden). Default: always visible. */
+  isVisible?: () => boolean;
   /** Called once per frame during the countdown (read input; may call pause()). */
   countdownTick?: () => void;
   events?: EventBus<GameEvents>;
@@ -49,6 +51,10 @@ export class GameLoop {
   autoPausedDuring = false;
   /** Total simulation steps executed (useful for tests / debugging). */
   steps = 0;
+  /** 'tutorial' interrupted by another pause: the countdown of that pause ends back in it. */
+  private resumeTo: PauseReason | null = null;
+  private active = 0;
+  private lastFrameAt: number | null = null;
 
   constructor(private readonly opts: LoopOptions) {
     this.stepMs = opts.stepMs ?? 50;
@@ -101,7 +107,10 @@ export class GameLoop {
   pause(reason: PauseReason, detail?: PauseDetail): boolean {
     if (reason === 'auto') this.autoPausedDuring = true;
     if (this.reason === reason) return false;
-    if (this.reason !== null && reason === 'auto') {
+    // A countdown that would end in 'tutorial' is interrupted: keep returning there.
+    if (this.reason === 'tutorial' && reason !== 'tutorial') this.resumeTo = 'tutorial';
+    else if (this.reason === null && this.countdownLeft === null) this.resumeTo = null;
+    if (this.reason !== null && reason === 'auto' && this.reason !== 'tutorial') {
       this.opts.events?.emit('autoPauseSuppressed', { current: this.reason });
       return false;
     }
@@ -123,10 +132,16 @@ export class GameLoop {
     this.reason = null;
     this.autoPausedDuring = false;
     this.last = null; // reset time base – no catch-up after the pause
-    this.opts.onResumeStart?.();
+    if (from === 'tutorial') this.resumeTo = null;
+    this.opts.onResumeStart?.(from);
+    // 'tutorial' resumes at once (any direction, ui-m1 §11.4); a pause over 'tutorial' always
+    // counts down (1.0 s) and then returns to 'tutorial'.
+    const back = this.resumeTo === 'tutorial';
+    const countdown = back ? true : from === 'tutorial' ? opts.countdown === true : opts.countdown;
     // { countdown: false }: closing the text window resumes at once (GD / mechaniki 1.16).
-    if (this.countdownMs <= 0 || opts.countdown === false) {
-      this.opts.events?.emit('resumed', { from });
+    if (this.countdownMs <= 0 || countdown === false) {
+      if (back) this.backToTutorial();
+      else this.opts.events?.emit('resumed', { from });
       return true;
     }
     this.countdownFrom = from;
@@ -151,7 +166,8 @@ export class GameLoop {
     if (this.countdownLeft <= 0) {
       this.countdownLeft = null;
       this.last = now; // first tick happens one step after the countdown ends
-      this.opts.events?.emit('resumed', { from: this.countdownFrom });
+      if (this.resumeTo === 'tutorial') this.backToTutorial();
+      else this.opts.events?.emit('resumed', { from: this.countdownFrom });
       return;
     }
     const digit = Math.ceil(this.countdownLeft / (this.countdownMs / this.countdownDigits));
@@ -165,8 +181,33 @@ export class GameLoop {
     }
   }
 
+  private backToTutorial(): void {
+    this.resumeTo = null;
+    this.reason = 'tutorial';
+    this.opts.events?.emit('paused', { reason: 'tutorial' });
+  }
+
+  /**
+   * Pause-aware clock for UI timers (death screen 1500 / 5000 ms, ui-m1 §4): ms of frames
+   * while the page is visible and the game is NOT in an 'auto' or 'menu' pause. Runs while
+   * playing, in the countdown, in 'text' and 'tutorial'. One frame counts at most 250 ms.
+   */
+  activeMs(): number {
+    return this.active;
+  }
+
+  private countActive(now: number): void {
+    const prev = this.lastFrameAt;
+    this.lastFrameAt = now;
+    if (prev === null) return;
+    const visible = this.opts.isVisible?.() ?? true;
+    if (!visible || this.reason === 'auto' || this.reason === 'menu') return;
+    this.active += Math.min(250, Math.max(0, now - prev));
+  }
+
   /** Advance one frame at timestamp `now` (ms). Public for tests. */
   frame(now: number): void {
+    this.countActive(now);
     if (this.reason !== null) {
       this.last = null;
       this.opts.idle?.();

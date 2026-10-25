@@ -1,8 +1,13 @@
+import type { CombatEvent } from '../combat/state';
 import type { ContractEvents } from '../contracts/types';
 import type { ExportReminder } from '../save/reminder';
 
-/** Why the simulation is paused. 'text' = in-world text window (UI shows its own window). */
-export type PauseReason = 'menu' | 'text' | 'auto';
+/**
+ * Why the simulation is paused. 'text' = in-world text window (UI shows its own window).
+ * 'tutorial' = Prologue freeze (ui-m1 §11.4): held directions are NOT reset, any direction
+ * resumes without a countdown; a pause on top of it returns to 'tutorial' after its countdown.
+ */
+export type PauseReason = 'menu' | 'text' | 'auto' | 'tutorial';
 
 /** Extra info for the PAUSED overlay. 'hitWhileAway' = §1.11 trigger D (or a hit during the idle E). */
 export type PauseDetail = 'hitWhileAway';
@@ -41,16 +46,12 @@ export interface FxTriggerEvents {
   bossSummon: { entityId: number; cells: readonly FxCell[] };
   summonedSpawn: { entityId: number };
   bossDefeated: { entityId: number; cell: FxCell };
-  // Base screen (UI / base module; base screen coordinates)
-  basePrint: Record<string, never>;
-  baseArriveByLift: Record<string, never>;
-  newContractAvailable: Record<string, never>;
-  terminalOpened: { cell: FxCell };
-  gridFragmentLit: { cells: readonly FxCell[] };
-  baseUpgradeBuilt: { cells: readonly FxCell[] };
 }
 
 export interface GameEvents extends FxTriggerEvents {
+  /** PROG / Gameplay: every combat event, emitted in the tick it happened (several ticks per
+   *  frame lose nothing). Same objects as getCombat(state).events (walka-m1.md §8). */
+  'combat:event': { tick: number; event: CombatEvent };
   paused: { reason: PauseReason; detail?: PauseDetail };
   /** Resume countdown: emitted at start and whenever the shown digit changes (3·2·1). */
   countdown: { msLeft: number; digit: number; from: PauseReason };
