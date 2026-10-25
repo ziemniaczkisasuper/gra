@@ -12,7 +12,12 @@ import {
   type CombatConfig,
 } from '../src/data/combat-m0';
 import { ARENA_M0 } from '../src/data/maps';
-import { COMBAT_STYLE, PALETTE } from '../src/data/style';
+import {
+  combatEnemyGlyph,
+  combatEnemyTelegraphGlyph,
+  ENEMY_GLYPHS,
+  PALETTE,
+} from '../src/data/style';
 import { emptyActions, type ActionState } from '../src/input/actions';
 import {
   applyArmor,
@@ -129,7 +134,7 @@ describe('telegraph look (§1.7, GRAF §9)', () => {
     expect(ec.attack).not.toBeNull();
     const marker = s.entities.find((q) => q.kind === 'combat-fx' && q.x === 3 && q.y === 3);
     expect(marker?.glyph.ch).toBe('x');
-    expect(marker?.glyph.bg).toBe('#4A1240');
+    expect(marker?.glyph.bg).toBe(PALETTE.telegraphBg);
     expect(marker?.glyph.fg).toBe(PALETTE.enemy);
   });
 
@@ -150,7 +155,11 @@ describe('telegraph look (§1.7, GRAF §9)', () => {
   });
 
   it('no enemy glyph style uses uppercase', () => {
-    for (const g of Object.values(COMBAT_STYLE.enemy)) expect(g.ch).toBe(g.ch.toLowerCase());
+    for (const t of Object.keys(ENEMY_TYPES) as Array<keyof typeof ENEMY_TYPES>) {
+      expect(combatEnemyGlyph(t).ch).toBe(ENEMY_GLYPHS[t].glyph);
+      expect(combatEnemyTelegraphGlyph(t).ch).toBe(combatEnemyGlyph(t).ch);
+      expect(combatEnemyGlyph(t).ch).toBe(combatEnemyGlyph(t).ch.toLowerCase());
+    }
   });
 });
 
@@ -366,7 +375,7 @@ describe('armour (§2.11): DR = A/(A+100), max 60 %, min 1', () => {
 });
 
 describe('Panel Drone (§2.11 `d`)', () => {
-  it('moves every 200 ms (4 ticks), wind-up 400 ms, glyph d, 40 HP', () => {
+  it('moves every 200 ms (4 ticks), wind-up 450 ms (v0.5 GD rule), glyph d, 40 HP', () => {
     // 1-cell corridor → straight steps only.
     const s = createGame({
       mapRows: ['#'.repeat(16), '#@' + '.'.repeat(13) + '#', '#'.repeat(16)],
@@ -393,7 +402,7 @@ describe('Panel Drone (§2.11 `d`)', () => {
     }
     expect(moves.length).toBeGreaterThanOrEqual(3);
     for (let i = 1; i < moves.length; i++) expect(moves[i]! - moves[i - 1]!).toBe(4);
-    expect(blow - windStart).toBe(8);
+    expect(blow - windStart).toBe(9);
   });
 });
 

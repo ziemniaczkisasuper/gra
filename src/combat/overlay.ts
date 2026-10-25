@@ -1,31 +1,25 @@
 // Canvas overlay for combat feedback (§1.6, §1.7, §1.8; GRAF §9): floating numbers, 'miss',
 // '+1 kill', '!' above enemies (grey = ALERT, yellow = attack wind-up),
-// SIGNAL LOST screen, and a FALLBACK HP line until PROG / UI ships the real HUD.
+// and the SIGNAL LOST screen. HP / kills / deaths are shown by the DOM HUD (ui/hud.ts, getCombatHud).
 // Read-only: never mutates game state. Called after renderScene() each frame.
 import type { GameState } from '../core/game';
 import { COMBAT_STRINGS } from '../data/combat-m0';
-import { COMBAT_STYLE, FONT } from '../data/style';
+import { COMBAT_STYLE, ENEMY_SIGNALS, FONT } from '../data/style';
 import { computeCamera } from '../render/camera';
 import type { GlyphRenderer } from '../render/glyph-renderer';
 import { visualPos } from '../render/scene';
 import { peekCombat } from './combat';
 
 export interface CombatOverlayOptions {
-  /** Draw the temporary HP line (turn off once UI's DOM HUD shows HP via getCombatHud()). */
+  /** @deprecated ignored – the temporary canvas HP line was removed (HUD: ui/hud.ts). */
   fallbackHud?: boolean;
-}
-
-/** `HP [########--] 80/100` (§1.16 pt 8). */
-export function hpBarText(hp: number, maxHp: number, width = 10): string {
-  const filled = maxHp > 0 ? Math.round((Math.max(0, hp) / maxHp) * width) : 0;
-  return `HP [${'#'.repeat(filled)}${'-'.repeat(width - filled)}] ${Math.max(0, hp)}/${maxHp}`;
 }
 
 export function renderCombatOverlay(
   r: GlyphRenderer,
   state: GameState,
   alpha: number,
-  opts: CombatOverlayOptions = {},
+  _opts: CombatOverlayOptions = {},
 ): void {
   const c = peekCombat(state);
   if (!c) return;
@@ -62,8 +56,9 @@ export function renderCombatOverlay(
     const ec = c.enemies.get(e.id);
     if (!ec || (ec.ai !== 'alert' && !ec.attack)) continue;
     const v = visualPos(e, state.tick, alpha);
+    const mark = ec.attack ? ENEMY_SIGNALS.telegraphMark : ENEMY_SIGNALS.alertMark;
     label(
-      COMBAT_STRINGS.alert,
+      mark.glyph,
       cx(v.x),
       cy(v.y),
       ec.attack ? COMBAT_STYLE.text.telegraph : COMBAT_STYLE.text.alert,
@@ -73,35 +68,6 @@ export function renderCombatOverlay(
   for (const f of c.floats) {
     const prog = 1 - (f.ttl - alpha) / f.maxTtl;
     label(f.text, cx(f.cell.x), cy(f.cell.y) - prog * 0.8 * r.cellH, COMBAT_STYLE.text[f.style]);
-  }
-
-  if (opts.fallbackHud ?? true) {
-    const hp = Math.max(0, c.player.hp);
-    const ratio = hp / c.player.maxHp;
-    const color =
-      ratio > 0.5
-        ? COMBAT_STYLE.text.hpHigh
-        : ratio >= 0.25
-          ? COMBAT_STYLE.text.hpMid
-          : COMBAT_STYLE.text.hpLow;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const hudPx = 16 * r.dpr;
-    const flash = c.player.hitFlash > 0;
-    label(
-      hpBarText(hp, c.player.maxHp),
-      12 * r.dpr,
-      14 * r.dpr,
-      flash ? COMBAT_STYLE.text.dmgToPlayer : color,
-      hudPx,
-    );
-    label(
-      `kills ${c.stats.kills} · deaths ${c.stats.deaths}`,
-      12 * r.dpr,
-      14 * r.dpr + hudPx * 1.3,
-      COMBAT_STYLE.text.miss,
-      11 * r.dpr,
-    );
   }
 
   // §1.8: SIGNAL LOST after the 0.5 s freeze.

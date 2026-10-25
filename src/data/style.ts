@@ -133,28 +133,63 @@ export const UI_COLORS = {
 } as const;
 
 // ---- Combat (added by PROG / Gameplay; mechaniki-m1.md v0.4 §1.7 + §1.13, GRAF styl-ascii.md §9).
-/** Frozen target cell background – dark magenta (GRAF §9). */
-const TELEGRAPH_BG = PALETTE.telegraphBg;
+// Enemy glyphs and telegraph colours come from ENEMY_GLYPHS / ENEMY_SIGNALS below (LUZ / Pracownik 4).
+// They are declared later in this file, so they are read lazily (getters / functions) – no TDZ.
 
-const enemyGlyph = (ch: string): GlyphStyle => ({ ch, fg: PALETTE.enemy, bold: true });
+/** Enemy glyph of a type (ENEMY_GLYPHS, lowercase; no uppercase in the telegraph – GRAF §9). */
+export function combatEnemyGlyph(type: EnemyGlyphKey): GlyphStyle {
+  return toGlyphStyle(ENEMY_GLYPHS[type]);
+}
+
+/** §1.7 pt 2: wind-up = same glyph in an inverted cell (ENEMY_SIGNALS.telegraphFg/Bg). */
+export function combatEnemyTelegraphGlyph(type: EnemyGlyphKey): GlyphStyle {
+  const d = ENEMY_GLYPHS[type];
+  return glyph(d.glyph, ENEMY_SIGNALS.telegraphFg, { bg: ENEMY_SIGNALS.telegraphBg, bold: true });
+}
+
+/** §1.7: hit enemy drawn white for 100 ms (white cell, dark glyph) – differs from the telegraph. */
+export function combatEnemyFlashGlyph(type: EnemyGlyphKey): GlyphStyle {
+  return glyph(ENEMY_GLYPHS[type].glyph, 'background', { bg: 'player', bold: true });
+}
 
 export const COMBAT_STYLE = {
-  /** One glyph per enemy type (GRAF: lowercase = normal enemies). No uppercase in telegraph. */
-  enemy: { crawler: enemyGlyph('c'), panelDrone: enemyGlyph('d') } as Record<string, GlyphStyle>,
-  /** §1.7 pt 2: enemy in wind-up = inverted cell (magenta background, dark glyph). */
-  enemyTelegraphFg: PALETTE.background,
-  enemyTelegraphBg: PALETTE.enemy,
-  /** §1.7: hit enemy drawn white for 100 ms (white cell, dark glyph) – differs from telegraph. */
-  enemyFlashFg: PALETTE.background,
-  enemyFlashBg: PALETTE.player,
-  /** §1.7 pt 3: frozen target cell – magenta 'x' on dark magenta, blinking. */
-  telegraphCell: { ch: 'x', fg: PALETTE.enemy, bg: TELEGRAPH_BG, bold: true } as GlyphStyle,
-  /** Player standing on the target cell, "off" phase of the blink. */
-  playerOnTelegraph: { ch: '@', fg: PALETTE.player, bg: TELEGRAPH_BG, bold: true } as GlyphStyle,
+  /** §1.7 pt 3: frozen target cell (ENEMY_SIGNALS.targetCell), blinking. */
+  get telegraphCell(): GlyphStyle {
+    return toGlyphStyle(ENEMY_SIGNALS.targetCell);
+  },
+  /** Player standing on the target cell, "off" phase of the blink (bg = target cell bg). */
+  get playerOnTelegraph(): GlyphStyle {
+    return glyph('@', 'player', { bg: ENEMY_SIGNALS.targetCell.bg, bold: true });
+  },
   /** §1.7 pt 5: player hit – halo blinks in the enemy colour. */
   playerHit: { ch: '@', fg: PALETTE.player, bg: PALETTE.enemy, bold: true } as GlyphStyle,
-  /** §1.7 pt 5: moment of the blow, 100 ms. */
-  strike: { ch: '*', fg: PALETTE.warning, bold: true } as GlyphStyle,
+  /** §1.7 pt 5: moment of the blow, 100 ms (ENEMY_SIGNALS.strike: magenta '*' on telegraphBg). */
+  get strike(): GlyphStyle {
+    return toGlyphStyle(ENEMY_SIGNALS.strike);
+  },
+  /** Line Sentry (ranged): frozen target cell and blow (ENEMY_SIGNALS.ranged*). */
+  get rangedTargetCell(): GlyphStyle {
+    return toGlyphStyle(ENEMY_SIGNALS.rangedTargetCell);
+  },
+  get rangedStrike(): GlyphStyle {
+    return toGlyphStyle(ENEMY_SIGNALS.rangedStrike);
+  },
+  /** §2.5 sk3 Buddy Drone (ALLY_GLYPHS.buddyDrone); on damage the bg blinks 'enemy'. */
+  get drone(): GlyphStyle {
+    return toGlyphStyle(ALLY_GLYPHS.buddyDrone);
+  },
+  get droneHit(): GlyphStyle {
+    const d = ALLY_GLYPHS.buddyDrone;
+    return glyph(d.glyph, d.color, { bg: 'enemy', bold: true });
+  },
+  /** Drone shot hitting an enemy (ALLY_GLYPHS.playerShot), 100 ms. */
+  get droneShot(): GlyphStyle {
+    return toGlyphStyle(ALLY_GLYPHS.playerShot);
+  },
+  /** §2.5 sk1 Dash trail '·' on the passed cells, 150 ms. */
+  get dashTrail(): GlyphStyle {
+    return glyph('·', 'player');
+  },
   /** §1.9: enemy wreck (passable). */
   wreck: { ch: '%', fg: PALETTE.text } as GlyphStyle,
   /** §1.8 / GRAF: player's body = white bold on the halo. */
@@ -166,10 +201,14 @@ export const COMBAT_STYLE = {
     dmgToPlayer: PALETTE.enemy,
     miss: PALETTE.text,
     kill: PALETTE.safe,
-    /** §1.6 / GRAF §9: grey '!' = ALERT (300 ms). */
-    alert: PALETTE.text,
-    /** §1.7 pt 1 / GRAF §9: yellow '!' = wind-up ("about to strike"). */
-    telegraph: PALETTE.warning,
+    /** §1.6: ALERT '!' (ENEMY_SIGNALS.alertMark). */
+    get alert(): string {
+      return PALETTE[ENEMY_SIGNALS.alertMark.color];
+    },
+    /** §1.7 pt 1: wind-up '!' (ENEMY_SIGNALS.telegraphMark). */
+    get telegraph(): string {
+      return PALETTE[ENEMY_SIGNALS.telegraphMark.color];
+    },
     outline: PALETTE.background,
     hpHigh: PALETTE.safe,
     hpMid: PALETTE.warning,
@@ -178,7 +217,7 @@ export const COMBAT_STYLE = {
     deathSub: PALETTE.text,
     dim: 'rgba(11, 15, 20, 0.72)',
   },
-} as const;
+};
 
 // ---- DOM UI: HUD, touch controls, pause menu, text window (added by PROG / UI i Menu).
 // Colours reuse the GRAF palette (graf/styl-ascii.md §3). New named values are marked

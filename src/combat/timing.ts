@@ -58,6 +58,15 @@ export interface CombatTicks {
   floatText: number;
   hitFlash: number;
   autopauseIdleHit: number;
+  // M1 (§2.5, §2.10)
+  tokenStagger: number;
+  skillBuffer: number;
+  dashIframes: number;
+  momentum: number;
+  dashTrail: number;
+  shock: number;
+  droneFire: number;
+  droneLife: number;
 }
 
 export function computeTicks(c: CombatConfig = COMBAT, tickMs: number = c.TICK_MS): CombatTicks {
@@ -89,5 +98,13 @@ export function computeTicks(c: CombatConfig = COMBAT, tickMs: number = c.TICK_M
     floatText: t(c.FLOAT_TEXT_MS),
     hitFlash: t(c.HIT_FLASH_MS),
     autopauseIdleHit: t(c.AUTOPAUSE_IDLE_HIT_MS),
+    tokenStagger: t(c.ATTACK_TOKEN_STAGGER_MS),
+    skillBuffer: t(c.SKILL_BUFFER_MS),
+    dashIframes: t(c.SK1_DASH_IFRAMES_MS),
+    momentum: t(c.SK1_MOMENTUM_WINDOW_MS),
+    dashTrail: t(c.SK1_DASH_TRAIL_MS),
+    shock: t(c.SK2_SHOCK_MS),
+    droneFire: t(c.SK3_DRONE_FIRE_MS),
+    droneLife: t(c.SK3_DRONE_LIFE_MS),
   };
 }
