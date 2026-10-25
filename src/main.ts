@@ -16,6 +16,7 @@ import { getCombatHud, setCombatReduceMotion, takeAutoPauseRequest } from './com
 import { installCombat } from './combat/install';
 import './contracts/save'; // registers the 'contracts' save section BEFORE readSave()/gameFromSave()
 import { installContracts } from './integration/contracts';
+import { applyCombatParams, parseCombatParams } from './integration/combat-url';
 import { renderCombatOverlay } from './combat/overlay';
 import {
   decodeSaveCode,
@@ -71,6 +72,9 @@ const fromSave = (s: SaveData | null): GameState => {
   }
 };
 let state: GameState = fromSave(readSave(store));
+// QA / balance helper: ?combat=m0|m1&depth=1..3 (new game only, see integration/combat-url.ts).
+const combatParams = parseCombatParams(location.search);
+applyCombatParams(state, combatParams);
 // Save protection (README „Przypomnienie o eksporcie”): UI imports `saveApi` from save/api.ts.
 const saveApi = initSaveApi({
   getState: () => state,
