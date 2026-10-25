@@ -24,19 +24,27 @@ const FACES = [
   { src: 'JetBrainsMono-Bold.ttf', out: 'JetBrainsMono-Bold-subset.woff2' },
 ];
 
-/** Always included even if no source file uses them yet (GRAF table, fallbacks). */
+/**
+ * Always included even if no source file uses them yet: every non-ASCII character of
+ * graf/styl-ascii.md (v1.2, approved) and graf/assety-m1.md, minus Polish letters and Polish
+ * quotes „ ” from the prose. × → ≠ appear in prose only – kept "when in doubt".
+ * ♥ U+2665 is NOT here: it is not in JetBrains Mono (GRAF dropped it, styl-ascii.md §Med-Patch).
+ */
 const EXTRA_CHARS = [
   '\u00A4', // ¤
   '\u00A7', // §
   '\u00B0', // °
   '\u00B7', // ·
+  '\u00D7', // ×
   '\u03A0', // Π
   '\u03A9', // Ω
   '\u2013', // –
   '\u2022', // •
   '\u2026', // …
   '\u2126', // Ω (ohm sign)
+  '\u2192', // →
   '\u2248', // ≈
+  '\u2260', // ≠
   '\u2261', // ≡
   '\u2593', // ▓
   '\u25A0', // ■

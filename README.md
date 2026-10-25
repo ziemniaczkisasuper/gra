@@ -140,7 +140,8 @@ lista znaków w `SUBSET.txt`), licencja w `public/fonts/OFL.txt`. Bez CDN; gdy f
 
 **Przegenerowanie: `npm run font:subset`** (`scripts/font-subset.mjs`, pakiet npm `subset-font` – HarfBuzz WASM, bez Pythona).
 - Zestaw znaków: ASCII 0x20–0x7E + **automatycznie** wszystkie znaki spoza ASCII z literałów tekstowych w `src/data/**/*.ts`
-  i `src/**/strings*.ts` (komentarze są pomijane) + stała lista `EXTRA_CHARS` w skrypcie.
+  i `src/**/strings*.ts` (komentarze są pomijane) + stała lista `EXTRA_CHARS` w skrypcie (wszystkie znaki spoza ASCII
+  z `graf/styl-ascii.md` v1.2 i `graf/assety-m1.md` bez polskich liter i cudzysłowów; `♥` celowo pominięte – brak w foncie).
 - Pełne fonty źródłowe (oficjalne, tag `v2.304` z github.com/JetBrains/JetBrainsMono) skrypt pobiera sam do `scripts/fonts-src/`
   (katalog w `.gitignore`), więc po świeżym checkout wystarczy `npm install && npm run font:subset` (wymaga internetu przy pierwszym uruchomieniu).
 - `npm run font:subset -- --check` – tylko wypisuje zebrane znaki i ich pliki, bez pobierania i zapisu.
