@@ -58,11 +58,11 @@ describe('InputManager + KeyboardSource', () => {
     expect(m.sample().move.y).toBe(-1);
   });
 
-  it('opposite keys cancel; diagonals are normalised', () => {
+  it('opposite keys: the last pressed wins (v0.5, QA-M0-009); diagonals are normalised', () => {
     const { t, m } = kb();
     t.down('KeyA');
     t.down('KeyD');
-    expect(m.sample().move.x).toBe(0);
+    expect(m.sample().move.x).toBe(1);
     t.up('KeyA');
     t.down('KeyS');
     const { x, y } = m.sample().move;

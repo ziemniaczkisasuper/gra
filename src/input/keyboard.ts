@@ -72,6 +72,9 @@ export class KeyboardSource implements InputSource {
   private latched = new Set<string>();
   /** Keys consumed by the UI (closed a text window / resumed the menu): dead until keyup. */
   private blocked = new Set<string>();
+  /** Press order (QA-M0-009): per axis the most recently pressed key wins. */
+  private pressSeq = new Map<string, number>();
+  private seq = 0;
 
   constructor(
     private readonly target: KeyTarget,
@@ -114,6 +117,7 @@ export class KeyboardSource implements InputSource {
     if (e.repeat || this.blocked.has(e.code)) return;
     this.held.add(e.code);
     this.latched.add(e.code);
+    this.pressSeq.set(e.code, ++this.seq);
   };
 
   private onUp = (e: KeyEventLike): void => {
@@ -128,8 +132,8 @@ export class KeyboardSource implements InputSource {
   }
 
   poll(): Partial<ActionState> {
-    const x = (this.active('right') ? 1 : 0) - (this.active('left') ? 1 : 0);
-    const y = (this.active('down') ? 1 : 0) - (this.active('up') ? 1 : 0);
+    const x = this.axis('left', 'right');
+    const y = this.axis('up', 'down');
     const out: Partial<ActionState> = {};
     for (const a of ['attack', 'skill1', 'skill2', 'skill3', 'pause'] as const) {
       out[a] = a === 'pause' ? this.latchedButton(a) : this.active(a);
@@ -139,6 +143,25 @@ export class KeyboardSource implements InputSource {
     if (x !== 0 || y !== 0) out.digitalMove = true;
     this.latched.clear();
     return out;
+  }
+
+  /**
+   * mechaniki §1.2 v0.5 (QA-M0-009): opposite keys on one axis never cancel – the most recently
+   * pressed one wins; when it is released the still-held one applies again.
+   */
+  private axis(neg: DirKey, pos: DirKey): -1 | 0 | 1 {
+    let best: -1 | 0 | 1 = 0;
+    let bestSeq = -1;
+    for (const code of [...this.held, ...this.latched]) {
+      const b = this.bindings[code];
+      if (b !== neg && b !== pos) continue;
+      const q = this.pressSeq.get(code) ?? 0;
+      if (q > bestSeq) {
+        bestSeq = q;
+        best = b === pos ? 1 : -1;
+      }
+    }
+    return best;
   }
 
   private latchedButton(a: ButtonAction): boolean {

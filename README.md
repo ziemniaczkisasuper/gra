@@ -45,6 +45,7 @@ Zasada: `core/game.ts`, `world/`, `entities/`, `combat/`, `save/schema|codec` **
 - `DIAG_GRACE` 50 ms (v0.5, QA-M0-002, `entities/player-move.ts`): krok prosty z miejsca rusza od razu. Jeśli w ciągu 1 ticku
   dojdzie klawisz prostopadły, a krok trwa, cel zmienia się na skos od pola startu. Krok trwa wtedy 4 ticki od startu (bez cofania),
   ale tylko gdy pole jest wolne i nie ma ścinania rogu. Okno działa tylko dla klawiatury (`ActionState.digitalMove`), nie w marszu.
+- Przeciwne klawisze (QA-M0-009, `KeyboardSource`): na każdej osi wygrywa ostatnio wciśnięty, a po jego puszczeniu działa ten wciąż trzymany. Nigdy nie dają stopu.
 - Bufor kierunku w cooldownie (QA-M0-001): zmiana kierunku albo ponowne wciśnięcie w trakcie cooldownu/przygotowania ciosu daje
   1 krok po jego końcu (bufor trwa co najmniej `INPUT_TAP_BUFFER_MS`). Trzymanie = marsz. Pauza czyści bufor.
 
