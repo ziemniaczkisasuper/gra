@@ -19,7 +19,7 @@ Numery linii są z commita 2963c22 i mogą się przesunąć. Szukaj po nazwie sy
   Gotowe, gdy: działa kryterium 1 na prawdziwym telefonie.
 - [x] **T6. FX zamachu i znacznik celowania.** Podświetl 8 pól łuku przez 150 ms i pokaż znacznik kierunku celowania przy graczu.
 - [x] **T7. Dash.** Kierunek to `move ?? aim ?? facing`, a Dash przerywa windup. Gotowe, gdy działa kryterium 11.
-- [ ] **T8. Publikacja demo.** Uruchom `npx vite build --base=/gra/` i wrzuć `dist` z `.nojekyll` na gałąź `gh-pages` (opis w `START-CURSOR.md`). Sprawdź na telefonie: https://ziemniaczkisasuper.github.io/gra/
+- [x] **T8. Publikacja demo.** Uruchom `npx vite build --base=/gra/` i wrzuć `dist` z `.nojekyll` na gałąź `gh-pages` (opis w `START-CURSOR.md`). Sprawdź na telefonie: https://ziemniaczkisasuper.github.io/gra/
 
 ## Etap B – po demo
 
