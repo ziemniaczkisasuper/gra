@@ -7,7 +7,7 @@ import { encodeSaveCode } from './codec';
 import { snapshot } from './index';
 import { evaluateExportReminder, type ExportReminder } from './reminder';
 import type { SaveData } from './schema';
-import { writeSave, type KeyValueStore } from './storage';
+import { unblockSaveWrites, writeSave, type KeyValueStore } from './storage';
 
 export interface SaveApiDeps {
   getState(): GameState;
@@ -32,14 +32,28 @@ export interface SaveApi {
   dismissIosHint(): void;
   /** Evaluate now; emits save:exportReminder if there is any reason. Returns the payload or null. */
   checkExportReminder(): ExportReminder | null;
+  /** QA-M0-005: last load failure of this session (null = none / resolved). */
+  getLoadFailure(): LoadFailure | null;
+  /** Records a load failure and emits save:loadFailed (main.ts at boot). */
+  reportLoadFailure(f: LoadFailure): void;
+  /**
+   * Player's decision "continue with the new game": auto-save allowed again, the current game
+   * is saved over the old slot (the raw copy stays in backupKey).
+   */
+  resolveLoadFailure(): void;
+}
+
+export interface LoadFailure {
+  reason: 'newerVersion' | 'corrupt';
+  backupKey: string | null;
 }
 
 export function createSaveApi(deps: SaveApiDeps): SaveApi {
   const now = deps.now ?? (() => Date.now());
+  let failure: LoadFailure | null = null;
   const persist = (t: number): SaveData => {
     const data = snapshot(deps.getState(), t);
-    writeSave(deps.store, data);
-    deps.bus.emit('saved', { savedAt: t, trigger: 'manual' });
+    if (writeSave(deps.store, data)) deps.bus.emit('saved', { savedAt: t, trigger: 'manual' });
     return data;
   };
   const markExported = (): SaveData => {
@@ -82,6 +96,16 @@ export function createSaveApi(deps: SaveApiDeps): SaveApi {
       if (r) deps.bus.emit('save:exportReminder', r);
       return r;
     },
+    getLoadFailure: () => failure,
+    reportLoadFailure(f) {
+      failure = { ...f };
+      deps.bus.emit('save:loadFailed', { ...f });
+    },
+    resolveLoadFailure() {
+      failure = null;
+      unblockSaveWrites(deps.store);
+      persist(now());
+    },
   };
 }
 
@@ -104,4 +128,7 @@ export const saveApi: SaveApi = {
   snoozeExportReminder: () => need().snoozeExportReminder(),
   dismissIosHint: () => need().dismissIosHint(),
   checkExportReminder: () => need().checkExportReminder(),
+  getLoadFailure: () => need().getLoadFailure(),
+  reportLoadFailure: (f) => need().reportLoadFailure(f),
+  resolveLoadFailure: () => need().resolveLoadFailure(),
 };

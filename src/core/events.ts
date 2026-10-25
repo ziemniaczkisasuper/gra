@@ -20,6 +20,12 @@ export interface GameEvents {
   'save:exported': { method: 'file' | 'code' };
   /** Export reminder snoozed until `until` (Unix ms). */
   'save:exportSnoozed': { until: number };
+  /**
+   * QA-M0-005: the stored save could not be loaded (a new game runs). Raw text copied to
+   * `backupKey` (null = copy failed). For 'newerVersion' (and a failed copy) auto-save is
+   * blocked until saveApi.resolveLoadFailure() or an import.
+   */
+  'save:loadFailed': { reason: 'newerVersion' | 'corrupt'; backupKey: string | null };
   // --- BASE contracts (src/contracts/, owner LUZ / Pracownik 2). Emitted by the caller from the
   // events returned by applyContractEvent() / refillBoard() – the module itself is pure.
   'contract:offered': ContractEvents['contract:offered'];

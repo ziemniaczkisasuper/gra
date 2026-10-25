@@ -14,14 +14,14 @@ import { GlyphRenderer } from './render/glyph-renderer';
 import { renderScene } from './render/scene';
 import { getCombatHud, setCombatReduceMotion, takeAutoPauseRequest } from './combat/combat';
 import { installCombat } from './combat/install';
-import './contracts/save'; // registers the 'contracts' save section BEFORE readSave()/gameFromSave()
+import './contracts/save'; // registers the 'contracts' save section BEFORE loadGame()/gameFromSave()
 import { installContracts } from './integration/contracts';
 import { applyCombatParams, parseCombatParams } from './integration/combat-url';
 import { renderCombatOverlay } from './combat/overlay';
 import {
   decodeSaveCode,
   gameFromSave,
-  readSave,
+  saveWritesBlocked,
   snapshot,
   writeSave,
   type KeyValueStore,
@@ -30,6 +30,7 @@ import {
 import { downloadSaveFile, pickSaveFile } from './save/files';
 import { memoryStore } from './save/storage';
 import { initSaveApi } from './save/api';
+import { loadGame } from './save/boot';
 import { isIosNotStandalone, requestPersistentStorage } from './save/storage-env';
 import { applyCssVars } from './ui/css-vars';
 import { createUi } from './ui/overlay';
@@ -63,15 +64,10 @@ const bus = new EventBus<GameEvents>();
 const mapParam = new URLSearchParams(location.search).get('map');
 const mapRows = MAPS[(mapParam && mapParam in MAPS ? mapParam : DEFAULT_MAP) as MapId];
 // Save v3: seed, tick, rng streams, player + module sections (save/sections.ts registry).
-const fromSave = (s: SaveData | null): GameState => {
-  try {
-    return gameFromSave(s, { mapRows });
-  } catch (e) {
-    console.warn('Save could not be applied – new game', e);
-    return gameFromSave(null, { mapRows });
-  }
-};
-let state: GameState = fromSave(readSave(store));
+// QA-M0-005: a save that cannot be loaded is copied to a backup key; a newer-version save is
+// write-protected until the player decides (save:loadFailed, saveApi.resolveLoadFailure()).
+const loaded = loadGame(store, { mapRows });
+let state: GameState = loaded.state;
 // QA / balance helper: ?combat=m0|m1&depth=1..3 (new game only, see integration/combat-url.ts).
 const combatParams = parseCombatParams(location.search);
 applyCombatParams(state, combatParams);
@@ -136,8 +132,8 @@ const loop = new GameLoop({
 function save(trigger: SaveTrigger): void {
   const data = snapshot(state, Date.now());
   try {
-    writeSave(store, data);
-    bus.emit('saved', { savedAt: data.savedAt, trigger });
+    // false while a newer-version save is write-protected (QA-M0-005)
+    if (writeSave(store, data)) bus.emit('saved', { savedAt: data.savedAt, trigger });
   } catch (e) {
     console.warn('Save failed', e);
   }
@@ -157,6 +153,8 @@ function applySave(data: SaveData): void {
     ui.toast(STRINGS.importFailed);
     return;
   }
+  // An import is the player's decision about a save that failed to load (QA-M0-005).
+  if (saveApi.getLoadFailure() || saveWritesBlocked(store)) saveApi.resolveLoadFailure();
   writeSave(store, data);
   bus.emit('saved', { savedAt: data.savedAt, trigger: 'import' });
   ui.toast(STRINGS.imported);
@@ -260,6 +258,7 @@ async function boot(): Promise<void> {
   fit();
   loop.start();
   void requestPersistentStorage().then((p) => console.info(`storage.persist: ${p}`));
+  if (loaded.failure) saveApi.reportLoadFailure(loaded.failure); // UI: save:loadFailed
   saveApi.checkExportReminder(); // after load; UI may also call saveApi.checkExportReminder()
 }
 void boot();

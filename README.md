@@ -91,6 +91,12 @@ Zasada: `core/game.ts`, `world/`, `entities/`, `combat/`, `save/schema|codec` **
   `gameFromSave(data | null, { mapRows })` → nowy `GameState` (dla `null`: nowa gra z `fresh()` każdej sekcji).
 - Eksport: plik `.json` lub kod tekstowy `GRA1z.<base64url(deflate-raw)>` (CompressionStream), bez kompresji `GRA1j.<base64url>`.
   Import z pliku i z kodu (w nakładce pauzy).
+- **Zapis, którego nie da się wczytać (QA-M0-005, `save/boot.ts` `loadGame`, `save/storage.ts` `loadSave`):**
+  - surowy tekst trafia do klucza `gra.save.v1.backup-<ms>` (maks. 3, najstarsza kopia znika; ten sam tekst nie jest kopiowany drugi raz; lista kluczy w `gra.save.v1.backups`, `listSaveBackups(store)`);
+  - gra startuje jako nowa, a w `boot()` idzie zdarzenie `save:loadFailed { reason: 'newerVersion' | 'corrupt', backupKey }` (`backupKey: null` = kopia się nie udała). Stan da się też odczytać przez `saveApi.getLoadFailure()`;
+  - przy `newerVersion` (oraz gdy kopia się nie udała) **każdy zapis do slotu jest zablokowany**: `writeSave()` zwraca `false`, a `saved` nie jest emitowane. Eksport pliku i kodu działa;
+  - decyzja gracza: `saveApi.resolveLoadFailure()` („graj dalej nową grą”) odblokowuje zapis i zapisuje bieżącą grę (kopia zostaje). Import zapisu też odblokowuje. Okno z wyborem rysuje UI;
+  - `corrupt` z udaną kopią nie blokuje zapisu, bo surowy tekst jest bezpieczny w kopii.
 
 ### Rejestr sekcji zapisu (`save/sections.ts`) – dla Gameplay (`combat`) i LUZ (`contracts`)
 ```ts

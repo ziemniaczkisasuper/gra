@@ -40,8 +40,17 @@ export const OPTIONAL_NUMBER_KEYS = [
   'iosHintHiddenUntil',
 ] as const;
 
+/** Why a save could not be loaded (QA-M0-005): from a newer game version, or unreadable. */
+export type SaveFailReason = 'newerVersion' | 'corrupt';
+
 export class SaveError extends Error {
   override name = 'SaveError';
+  constructor(
+    message: string,
+    readonly reason: SaveFailReason = 'corrupt',
+  ) {
+    super(message);
+  }
 }
 
 type Raw = Record<string, unknown>;
@@ -76,7 +85,7 @@ export function migrate(input: unknown, defaults: SaveDefaults): Raw {
   let v = raw.version;
   if (!Number.isInteger(v) || (v as number) < 1) throw new SaveError('Missing or bad save version');
   if ((v as number) > SAVE_VERSION)
-    throw new SaveError(`Save version ${String(v)} is newer than the game`);
+    throw new SaveError(`Save version ${String(v)} is newer than the game`, 'newerVersion');
   while ((v as number) < SAVE_VERSION) {
     const m = MIGRATIONS[v as number];
     if (!m) throw new SaveError(`No migration from version ${String(v)}`);
