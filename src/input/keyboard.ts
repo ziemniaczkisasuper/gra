@@ -1,4 +1,4 @@
-import { M0, msToTicks } from '../data/mechanics-m0';
+import { M0 } from '../data/mechanics-m0';
 import type { ActionState, ButtonAction, InputSource } from './actions';
 
 type DirKey = 'up' | 'down' | 'left' | 'right';
@@ -26,9 +26,6 @@ export const DEFAULT_BINDINGS: Readonly<Record<string, KeyBinding>> = {
   Escape: 'pause',
   KeyP: 'pause',
 };
-
-const isDir = (b: KeyBinding): b is DirKey =>
-  b === 'up' || b === 'down' || b === 'left' || b === 'right';
 
 export interface KeyEventLike {
   code: string;
@@ -66,25 +63,23 @@ function isEditable(t: unknown): boolean {
  * - Held state from keydown/keyup, presses latched until the next poll (taps never lost).
  * - Auto-repeat keydowns are ignored, so a key still held after reset() stays inactive
  *   until released and pressed again (no instant move/attack after RESUME).
- * - DIAG_GRACE (mechaniki 1.2): when starting from standstill with a single straight
- *   direction, the first step waits 1 poll (50 ms) for a second key, so W+D gives a diagonal.
+ * - DIAG_GRACE (mechaniki 1.2 v0.5, QA-M0-002): NO waiting here any more – a straight step
+ *   starts at once; the engine (entities/player-move.ts) turns it into a diagonal if the
+ *   perpendicular key comes within DIAG_GRACE. The source only flags `digitalMove`.
  */
 export class KeyboardSource implements InputSource {
   private held = new Set<string>();
   private latched = new Set<string>();
   /** Keys consumed by the UI (closed a text window / resumed the menu): dead until keyup. */
   private blocked = new Set<string>();
-  private wasMoving = false;
-  private graceCount = 0;
-  private readonly graceSteps: number;
 
   constructor(
     private readonly target: KeyTarget,
     private readonly bindings: Readonly<Record<string, KeyBinding>> = DEFAULT_BINDINGS,
-    diagGraceMs: number = M0.DIAG_GRACE_MS,
+    /** Unused since v0.5 (grace moved to the engine); kept for the constructor signature. */
+    _diagGraceMs: number = M0.DIAG_GRACE_MS,
     private readonly blurTarget?: BlurTarget,
   ) {
-    this.graceSteps = diagGraceMs > 0 ? msToTicks(diagGraceMs) : 0;
     target.addEventListener('keydown', this.onDown);
     target.addEventListener('keyup', this.onUp);
     blurTarget?.addEventListener('blur', this.onBlur);
@@ -133,31 +128,16 @@ export class KeyboardSource implements InputSource {
   }
 
   poll(): Partial<ActionState> {
-    let x = (this.active('right') ? 1 : 0) - (this.active('left') ? 1 : 0);
-    let y = (this.active('down') ? 1 : 0) - (this.active('up') ? 1 : 0);
+    const x = (this.active('right') ? 1 : 0) - (this.active('left') ? 1 : 0);
+    const y = (this.active('down') ? 1 : 0) - (this.active('up') ? 1 : 0);
     const out: Partial<ActionState> = {};
     for (const a of ['attack', 'skill1', 'skill2', 'skill3', 'pause'] as const) {
       out[a] = a === 'pause' ? this.latchedButton(a) : this.active(a);
     }
 
-    const moving = x !== 0 || y !== 0;
-    const straight = moving && (x === 0 || y === 0);
-    let holdLatch = false;
-    if (moving && straight && !this.wasMoving && this.graceCount < this.graceSteps) {
-      this.graceCount++;
-      x = 0;
-      y = 0;
-      holdLatch = true; // keep a tapped direction for the next poll
-    } else {
-      this.graceCount = 0;
-    }
-    this.wasMoving = x !== 0 || y !== 0;
     out.move = { x, y };
-
-    if (holdLatch) {
-      for (const code of [...this.latched])
-        if (!isDir(this.bindings[code]!)) this.latched.delete(code);
-    } else this.latched.clear();
+    if (x !== 0 || y !== 0) out.digitalMove = true;
+    this.latched.clear();
     return out;
   }
 
@@ -169,7 +149,5 @@ export class KeyboardSource implements InputSource {
   reset(): void {
     this.held.clear();
     this.latched.clear();
-    this.wasMoving = false;
-    this.graceCount = 0;
   }
 }

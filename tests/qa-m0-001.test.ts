@@ -1,13 +1,16 @@
 // QA-M0-001 regression: a direction tap during the step cooldown is buffered, not lost.
+// Since v0.5 (QA-M0-002) a perpendicular key in cooldown tick 1 turns a straight step from
+// standstill into a diagonal, so the buffer cases tap in cooldown tick 2.
 import { describe, expect, it } from 'vitest';
 import { keyGame } from './helpers/keys';
 
 describe('QA-M0-001: buffered direction taps', () => {
-  it('S tapped for 1 tick in cooldown tick 1 → one step down after the cooldown', () => {
+  it('S tapped for 1 tick in cooldown tick 2 → one step down after the cooldown', () => {
     const k = keyGame(undefined, 0);
     const { x, y } = k.g.player;
     k.tick((t) => (t.down('KeyD'), t.up('KeyD'))); // tap D: step right, cooldown 3
-    k.tick((t) => t.down('KeyS')); // cooldown tick 1
+    k.tick();
+    k.tick((t) => t.down('KeyS')); // cooldown tick 2
     k.tick((t) => t.up('KeyS'));
     k.run(8);
     expect(k.g.player).toMatchObject({ x: x + 1, y: y + 1 });
@@ -18,6 +21,7 @@ describe('QA-M0-001: buffered direction taps', () => {
     const k = keyGame(undefined, 0);
     const { x, y } = k.g.player;
     k.tick((t) => (t.down('KeyD'), t.up('KeyD')));
+    k.tick();
     k.tick((t) => t.down('KeyS'));
     k.tick();
     k.tick((t) => t.up('KeyS'));
@@ -48,10 +52,11 @@ describe('QA-M0-001: buffered direction taps', () => {
     const k = keyGame(undefined, 0);
     const { x, y } = k.g.player;
     k.tick((t) => (t.down('KeyD'), t.up('KeyD'))); // tick 0
-    k.tick((t) => (t.down('KeyS'), t.up('KeyS'))); // tick 1
-    k.run(3); // ticks 2, 3, 4
+    k.tick(); // tick 1
+    k.tick((t) => (t.down('KeyS'), t.up('KeyS'))); // tick 2 (buffered)
+    k.tick(); // tick 3 → step
     expect(k.log[2]).toEqual({ x: x + 1, y }); // still cooling down
-    expect(k.log[3]).toEqual({ x: x + 1, y: y + 1 }); // tick 3 = 150 ms
+    expect(k.log[3]).toEqual({ x: x + 1, y: y + 1 }); // tick 3 = 150 ms after the first step
   });
 
   it('holding keeps marching every 3 ticks (no extra steps from the buffer)', () => {

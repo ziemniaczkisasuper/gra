@@ -69,24 +69,20 @@ describe('InputManager + KeyboardSource', () => {
     expect(Math.hypot(x, y)).toBeCloseTo(1);
   });
 
-  it('DIAG_GRACE: first straight step from standstill waits 1 tick for a second key', () => {
+  it('v0.5 (QA-M0-002): no DIAG_GRACE wait in the source – a straight key moves at once', () => {
     const { t, m } = kb(50);
     t.down('KeyW');
-    expect(m.sample().move).toEqual({ x: 0, y: 0 });
+    const a = m.sample();
+    expect(a.move).toEqual({ x: 0, y: -1 });
+    expect(a.digitalMove).toBe(true); // the engine applies the grace (entities/player-move.ts)
     t.down('KeyD');
-    const mv = m.sample().move;
-    expect(mv.x).toBeGreaterThan(0);
-    expect(mv.y).toBeLessThan(0);
-    // while marching there is no delay
-    t.up('KeyD');
-    expect(m.sample().move).toEqual({ x: 0, y: -1 });
+    expect(m.sample().move.x).toBeGreaterThan(0);
   });
 
-  it('DIAG_GRACE keeps a quick tap', () => {
+  it('a quick tap gives exactly one poll with the direction', () => {
     const { t, m } = kb(50);
     t.down('KeyD');
     t.up('KeyD');
-    expect(m.sample().move.x).toBe(0);
     expect(m.sample().move.x).toBe(1);
     expect(m.sample().move.x).toBe(0);
   });

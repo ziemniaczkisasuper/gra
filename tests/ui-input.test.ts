@@ -151,26 +151,26 @@ const kb = (grace = 50) => {
 };
 
 describe('KeyboardSource (UI i Menu)', () => {
-  it('DIAG_GRACE 50 ms: W then D within one tick gives a diagonal first step', () => {
+  // mechaniki v0.5 / QA-M0-002 (PROG / Silnik): the DIAG_GRACE wait moved from the keyboard
+  // source to the engine (entities/player-move.ts, tests/qa-m0-002.test.ts).
+  it('v0.5: W then D – straight at once, then the diagonal (engine upgrades the step)', () => {
     const { t, m } = kb();
     t.down('KeyW');
-    expect(m.sample().move).toEqual({ x: 0, y: 0 });
+    expect(toDir8(m.sample().move)).toEqual({ x: 0, y: -1 });
     t.down('KeyD');
     expect(toDir8(m.sample().move)).toEqual({ x: 1, y: -1 });
   });
 
-  it('DIAG_GRACE: a single key still moves after the 50 ms window', () => {
+  it('v0.5: a single key moves in the first poll', () => {
     const { t, m } = kb();
     t.down('ArrowLeft');
-    expect(m.sample().move).toEqual({ x: 0, y: 0 });
     expect(toDir8(m.sample().move)).toEqual({ x: -1, y: 0 });
   });
 
-  it('DIAG_GRACE: a short tap during the window is not lost', () => {
+  it('a short tap is not lost', () => {
     const { t, m } = kb();
     t.down('KeyS');
     t.up('KeyS');
-    expect(m.sample().move).toEqual({ x: 0, y: 0 });
     expect(toDir8(m.sample().move)).toEqual({ x: 0, y: 1 });
   });
 

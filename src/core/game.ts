@@ -114,7 +114,7 @@ export function stepGame(state: GameState, actions: ActionState, dtMs: number): 
     memoryOf(state),
     state.map,
     state.tick,
-    { costs: PLAYER_STEP_COSTS },
+    { costs: PLAYER_STEP_COSTS, digital: actions.digitalMove === true },
     (x, y) => isOccupied(state, x, y, p),
   );
   for (const s of systems.world) s(state, actions, dtMs);

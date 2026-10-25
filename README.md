@@ -42,7 +42,11 @@ Zasada: `core/game.ts`, `world/`, `entities/`, `combat/`, `save/schema|codec` **
   potem cooldown. Krok w ścianę/encję nie kosztuje czasu (zmienia `facing`). Brak ścinania rogów.
   Ruch zablokowany przy `attackWindup > 0`. Render płynnie animuje krok (tylko wizualnie).
 - Kolejność w ticku: systemy fazy `player` → ruch gracza → systemy fazy `world` → odliczenie liczników → `tick++`.
-- `DIAG_GRACE` 50 ms (tylko klawiatura, ruszanie z miejsca) – w `KeyboardSource`.
+- `DIAG_GRACE` 50 ms (v0.5, QA-M0-002, `entities/player-move.ts`): krok prosty z miejsca rusza od razu. Jeśli w ciągu 1 ticku
+  dojdzie klawisz prostopadły, a krok trwa, cel zmienia się na skos od pola startu. Krok trwa wtedy 4 ticki od startu (bez cofania),
+  ale tylko gdy pole jest wolne i nie ma ścinania rogu. Okno działa tylko dla klawiatury (`ActionState.digitalMove`), nie w marszu.
+- Bufor kierunku w cooldownie (QA-M0-001): zmiana kierunku albo ponowne wciśnięcie w trakcie cooldownu/przygotowania ciosu daje
+  1 krok po jego końcu (bufor trwa co najmniej `INPUT_TAP_BUFFER_MS`). Trzymanie = marsz. Pauza czyści bufor.
 
 ## Pauza i wznowienie – API (`core/loop.ts`)
 | Wywołanie / zdarzenie | Działanie |

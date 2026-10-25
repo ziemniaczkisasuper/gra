@@ -10,6 +10,11 @@ export interface ActionState {
   skill3: boolean;
   /** Edge only: true in the one step after Esc/P/|| was pressed. */
   pause: boolean;
+  /**
+   * The move comes from digital keys (keyboard) – enables the DIAG_GRACE upgrade of a straight
+   * step to a diagonal (mechaniki §1.2 v0.5, QA-M0-002). Joystick / touch: false.
+   */
+  digitalMove?: boolean;
 }
 
 export type ButtonAction = 'attack' | 'skill1' | 'skill2' | 'skill3' | 'pause';
@@ -116,18 +121,20 @@ export class InputManager {
   private pendingButtons = new Set<ButtonAction>();
   private pendingMove: { x: number; y: number } | null = null;
 
-  private pollAll(): { move: { x: number; y: number }; raw: Set<ButtonAction> } {
+  private pollAll(): { move: { x: number; y: number }; raw: Set<ButtonAction>; digital: boolean } {
     const move = { x: 0, y: 0 };
     const raw = new Set<ButtonAction>();
+    let digital = false;
     for (const src of this.sources) {
       const p = src.poll();
       if (p.move) {
         move.x += p.move.x;
         move.y += p.move.y;
+        if (p.digitalMove && (p.move.x !== 0 || p.move.y !== 0)) digital = true;
       }
       for (const a of BUTTON_ACTIONS) if (p[a]) raw.add(a);
     }
-    return { move, raw };
+    return { move, raw, digital };
   }
 
   /**
@@ -148,6 +155,7 @@ export class InputManager {
     const polled = this.pollAll();
     const raw = polled.raw;
     out.move = polled.move;
+    if (polled.digital) out.digitalMove = true;
     if (out.move.x === 0 && out.move.y === 0 && this.pendingMove) out.move = this.pendingMove;
     for (const a of this.pendingButtons) raw.add(a);
     this.pendingButtons.clear();
