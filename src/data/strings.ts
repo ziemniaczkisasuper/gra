@@ -3,6 +3,8 @@ export const STRINGS = {
   paused: 'PAUSED',
   pausedAuto: 'Paused automatically. Progress saved.',
   pausedMenu: 'Progress saved.',
+  /** §1.11 trigger D – shown above pausedMenu. */
+  hitWhileAway: 'You were hit while away.',
   resume: 'RESUME',
   pauseButton: 'Pause (Esc)',
   exportFile: 'Export save (.json)',

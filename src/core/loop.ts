@@ -1,4 +1,4 @@
-import type { EventBus, GameEvents, PauseReason } from './events';
+import type { EventBus, GameEvents, PauseDetail, PauseReason } from './events';
 
 export interface LoopOptions {
   /** Fixed simulation step in ms (default 50 = 20 Hz). */
@@ -98,7 +98,7 @@ export class GameLoop {
    *   'autoPauseSuppressed { current }' and sets `autoPausedDuring` instead.
    * - 'menu' / 'text' replace a different existing reason.
    */
-  pause(reason: PauseReason): boolean {
+  pause(reason: PauseReason, detail?: PauseDetail): boolean {
     if (reason === 'auto') this.autoPausedDuring = true;
     if (this.reason === reason) return false;
     if (this.reason !== null && reason === 'auto') {
@@ -107,7 +107,7 @@ export class GameLoop {
     }
     this.countdownLeft = null; // pausing during the countdown cancels it
     this.reason = reason;
-    this.opts.events?.emit('paused', { reason });
+    this.opts.events?.emit('paused', detail ? { reason, detail } : { reason });
     return true;
   }
 

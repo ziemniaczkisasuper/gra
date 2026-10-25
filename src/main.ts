@@ -1,5 +1,5 @@
 import './style.css';
-import { EventBus, type GameEvents, type SaveTrigger } from './core/events';
+import { EventBus, type GameEvents, type PauseDetail, type SaveTrigger } from './core/events';
 import { stepGame, type GameState } from './core/game';
 import { GameLoop } from './core/loop';
 import { DEFAULT_MAP, MAPS, type MapId } from './data/maps';
@@ -12,7 +12,13 @@ import { TouchSource } from './input/touch';
 import { pickFontPx } from './render/camera';
 import { GlyphRenderer } from './render/glyph-renderer';
 import { renderScene } from './render/scene';
-import { getCombatHud, setCombatReduceMotion, takeAutoPauseRequest } from './combat/combat';
+import {
+  getCombatHud,
+  peekCombat,
+  setCombatReduceMotion,
+  takeAutoPauseRequest,
+} from './combat/combat';
+import { AwayHitTracker } from './core/away';
 import { installCombat } from './combat/install';
 import './contracts/save'; // registers the 'contracts' save section BEFORE loadGame()/gameFromSave()
 import { installContracts } from './integration/contracts';
@@ -87,6 +93,7 @@ installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.
 // from integration/contracts.ts (ctx = lift stops + solved variants). M0 has no base yet.
 
 const input = new InputManager();
+const away = new AwayHitTracker(); // QA-M0-006
 const keyboard = new KeyboardSource(window, undefined, undefined, window); // blur → release keys
 input.add(keyboard);
 const touch = new TouchSource();
@@ -105,8 +112,10 @@ const loop = new GameLoop({
       return;
     }
     stepGame(state, actions, dt);
-    if (takeAutoPauseRequest(state)) autoPause(); // trigger D (hit while away) – combat
-    if (input.idleMs >= M0.AUTOPAUSE_IDLE_MS) autoPause(); // trigger E
+    const hit = peekCombat(state)?.events.some((e) => e.type === 'playerHit') ?? false;
+    away.update(input.idleMs, hit);
+    if (takeAutoPauseRequest(state)) autoPause('hitWhileAway'); // trigger D – combat (QA-M0-006)
+    if (input.idleMs >= M0.AUTOPAUSE_IDLE_MS) autoPause(away.detail); // trigger E
   },
   countdownMs: M0.RESUME_COUNTDOWN_MS,
   onResumeStart: () => input.reset(), // keys held before RESUME do nothing
@@ -140,8 +149,8 @@ function save(trigger: SaveTrigger): void {
 }
 
 /** Focus loss etc.: pause (keeps an existing 'text'/'menu' reason), reset input, save now. */
-function autoPause(): void {
-  loop.pause('auto');
+function autoPause(detail?: PauseDetail): void {
+  loop.pause('auto', detail);
   input.reset();
   save('auto');
 }
@@ -198,11 +207,11 @@ const ui = createUi(
   { touch, settings: uiSettings },
 );
 
-bus.on('paused', ({ reason }) => {
+bus.on('paused', ({ reason, detail }) => {
   input.reset();
   if (reason !== 'auto') save(reason); // auto-pause saves in autoPause()
   ui.hideCountdown();
-  ui.showPaused(reason);
+  ui.showPaused(reason, detail);
 });
 bus.on('countdown', ({ digit }) => {
   ui.hidePaused();
@@ -217,9 +226,9 @@ bus.on('resumed', () => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') autoPause();
 });
-window.addEventListener('blur', autoPause);
-window.addEventListener('pagehide', autoPause);
-document.addEventListener('freeze', autoPause);
+window.addEventListener('blur', () => autoPause());
+window.addEventListener('pagehide', () => autoPause());
+document.addEventListener('freeze', () => autoPause());
 
 function fit(): void {
   const w = window.innerWidth;

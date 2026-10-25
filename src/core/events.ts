@@ -4,10 +4,12 @@ import type { ExportReminder } from '../save/reminder';
 /** Why the simulation is paused. 'text' = in-world text window (UI shows its own window). */
 export type PauseReason = 'menu' | 'text' | 'auto';
 
+/** Extra info for the PAUSED overlay. 'hitWhileAway' = §1.11 trigger D (or a hit during the idle E). */
+export type PauseDetail = 'hitWhileAway';
 export type SaveTrigger = PauseReason | 'manual' | 'import';
 
 export interface GameEvents {
-  paused: { reason: PauseReason };
+  paused: { reason: PauseReason; detail?: PauseDetail };
   /** Resume countdown: emitted at start and whenever the shown digit changes (3·2·1). */
   countdown: { msLeft: number; digit: number; from: PauseReason };
   resumed: { from: PauseReason };

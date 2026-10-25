@@ -1,4 +1,4 @@
-import type { PauseReason } from '../core/events';
+import type { PauseDetail, PauseReason } from '../core/events';
 import { STRINGS } from '../data/strings';
 import { UI_GLYPHS } from '../data/style';
 import type { TouchSource } from '../input/touch';
@@ -33,7 +33,7 @@ export interface UiOptions {
 }
 
 export interface Ui {
-  showPaused(reason: PauseReason): void;
+  showPaused(reason: PauseReason, detail?: PauseDetail): void;
   hidePaused(): void;
   toast(msg: string): void;
   setCode(code: string): void;
@@ -119,12 +119,17 @@ export function createUi(root: HTMLElement, h: UiHandlers, opts: UiOptions = {})
     hud,
     text,
     touch,
-    showPaused(reason) {
+    showPaused(reason, detail) {
       if (reason === 'text') {
         overlay.classList.remove('visible');
         return;
       }
-      sub.textContent = reason === 'auto' ? STRINGS.pausedAuto : STRINGS.pausedMenu;
+      sub.textContent =
+        detail === 'hitWhileAway' // QA-M0-006 (§1.11 D)
+          ? `${STRINGS.hitWhileAway} ${STRINGS.pausedMenu}`
+          : reason === 'auto'
+            ? STRINGS.pausedAuto
+            : STRINGS.pausedMenu;
       overlay.classList.add('visible');
     },
     hidePaused() {
