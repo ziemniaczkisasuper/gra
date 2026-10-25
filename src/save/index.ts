@@ -71,7 +71,9 @@ export function gameFromSave(data: SaveData | null, opts: NewGameOptions = {}): 
     return g;
   }
   const g = createGame({ ...opts, seed: data.seed });
-  placePlayer(g, data.player.x, data.player.y);
+  // QA-M0-012: exact saved cell; fallback (map '@') only if that cell is a wall. Static enemy
+  // spawns of the map are replaced by the combat section below and must not block it.
+  placePlayer(g, data.player.x, data.player.y, { ignoreEntities: true });
   g.player.facing = facingToVec(data.player.facing);
   g.tick = data.tick;
   g.rng.setStates(data.rngState);

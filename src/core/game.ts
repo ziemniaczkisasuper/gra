@@ -94,12 +94,22 @@ export function isOccupied(state: GameState, x: number, y: number, except?: Enti
   return state.entities.some((e) => e !== except && e.solid && e.x === x && e.y === y);
 }
 
-/** Puts the player on a cell if it is free floor; returns false (and keeps spawn) otherwise. */
-export function placePlayer(state: GameState, x: number, y: number): boolean {
+/**
+ * Puts the player on a cell if it is free floor; returns false (and keeps spawn) otherwise.
+ * `ignoreEntities` (save restore, QA-M0-012): only walls count – the map's static enemy spawns
+ * are replaced by the saved combat section right after, so they must not push the player away.
+ */
+export function placePlayer(
+  state: GameState,
+  x: number,
+  y: number,
+  opts: { ignoreEntities?: boolean } = {},
+): boolean {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
   const cx = Math.floor(x);
   const cy = Math.floor(y);
-  if (state.map.isSolid(cx, cy) || isOccupied(state, cx, cy, state.player)) return false;
+  if (state.map.isSolid(cx, cy)) return false;
+  if (!opts.ignoreEntities && isOccupied(state, cx, cy, state.player)) return false;
   setCell(state.player, cx, cy);
   return true;
 }
