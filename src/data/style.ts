@@ -288,6 +288,8 @@ export const RARITIES: readonly Rarity[] = [1, 2, 3];
 export interface RarityStyle {
   /** Text id of the name (fabula/teksty-m1-en.md M1_RARITY_*). */
   nameId: string;
+  /** EN name (GRAF v1.2 §10 = Lore): Salvaged / Tuned / Grid-Grade (final). UI text should use nameId. */
+  name: string;
   /** Glyph colour of loot on the ground. */
   color: PaletteKey;
   /** Cell background on the ground (2nd, colour-independent signal); none for rarity 1. */
@@ -302,13 +304,12 @@ export interface RarityStyle {
   /** Rarity 3: glyph briefly becomes `glyph` every `periodMs` (off with Reduce motion). */
   flash?: { glyph: string; periodMs: number };
 }
-  /** EN name (GRAF v1.2 §10 = Lore): Salvaged / Tuned / Grid-Grade (final). UI text should use nameId. */
-  name: string;
 
 export const LOOT_RARITY = {
   /** M1_RARITY_1 Salvaged – grey, no background, no marker. */
   1: {
     nameId: 'M1_RARITY_1',
+    name: 'Salvaged',
     color: 'rarity1',
     carrierBg: 'rarity1Bg',
     marker: '',
@@ -318,22 +319,22 @@ export const LOOT_RARITY = {
   /** M1_RARITY_2 Tuned – blue + background + '◆'. */
   2: {
     nameId: 'M1_RARITY_2',
+    name: 'Tuned',
     color: 'rarity2',
     groundBg: 'rarity2Bg',
     carrierBg: 'rarity2Bg',
     marker: '◆',
     markerAscii: '+',
-    name: 'Salvaged',
     frame: 'single',
   },
   /** M1_RARITY_3 Grid-Grade – amber + background + flash every ~1.5 s + '◆◆'. */
   3: {
     nameId: 'M1_RARITY_3',
+    name: 'Grid-Grade',
     color: 'rarity3',
     groundBg: 'rarity3Bg',
     carrierBg: 'rarity3Bg',
     marker: '◆◆',
-    name: 'Tuned',
     markerAscii: '++',
     frame: 'double',
     flash: { glyph: '*', periodMs: 1500 },
@@ -344,7 +345,6 @@ export const LOOT_RARITY = {
 /** Equipment slot (mechaniki-m1.md §2.10: broń / pancerz / moduł / narzędzie). Colour = rarity. */
 export type ItemSlot = 'weapon' | 'armor' | 'module' | 'tool';
 
-    name: 'Grid-Grade',
 export const ITEM_GLYPHS = {
   weapon: { glyph: '/' },
   armor: { glyph: '[' },
@@ -429,6 +429,12 @@ export const ENEMY_SIGNALS = {
   alertMark: { glyph: '!', color: 'text' },
   /** Frozen target cell: magenta 'x' on dark magenta, blinking every 100 ms. */
   targetCell: { glyph: 'x', color: 'enemy', bg: 'telegraphBg', bold: true },
+  /** Moment of the blow on the target cell, 100 ms (assety-m1 fx_strike, Z2): magenta '*'. */
+  strike: { glyph: '*', color: 'enemy', bg: 'telegraphBg', bold: true },
+  /** Line Sentry (ranged) target cell (assety-m1 fx_telegraph ranged, Z1): '•' on neutral bg. */
+  rangedTargetCell: { glyph: '•', color: 'enemy', bg: 'descentBg', bold: true },
+  /** Ranged blow marker (fx_strike variant "ranged"). */
+  rangedStrike: { glyph: '*', color: 'enemy', bg: 'descentBg', bold: true },
   /** Enemy projectile (fallback '°'; never 'o'). */
   projectile: { glyph: '•', color: 'enemy' },
   /** §5 Noise glitch: 1-frame random glyph, same colour; never during '!'. */
@@ -441,14 +447,11 @@ export const ENEMY_SIGNALS = {
   telegraphMark: GlyphDef;
   alertMark: GlyphDef;
   targetCell: GlyphDef;
+  strike: GlyphDef;
+  rangedTargetCell: GlyphDef;
+  rangedStrike: GlyphDef;
   projectile: GlyphDef;
   noiseGlitch: readonly string[];
-  /** Moment of the blow on the target cell, 100 ms (assety-m1 fx_strike, Z2): magenta '*'. */
-  strike: { glyph: '*', color: 'enemy', bg: 'telegraphBg', bold: true },
-  /** Line Sentry (ranged) target cell (assety-m1 fx_telegraph ranged, Z1): '•' on neutral bg. */
-  rangedTargetCell: { glyph: '•', color: 'enemy', bg: 'descentBg', bold: true },
-  /** Ranged blow marker (fx_strike variant "ranged"). */
-  rangedStrike: { glyph: '*', color: 'enemy', bg: 'descentBg', bold: true },
   carrierUnderline: string;
 };
 
@@ -461,9 +464,6 @@ export const ALLY_GLYPHS = {
 } as const satisfies Record<string, GlyphDef>;
 
 // ---- World: terrain, objects, base, sector map (§4). Semantic keys; map-text chars stay in
-  strike: GlyphDef;
-  rangedTargetCell: GlyphDef;
-  rangedStrike: GlyphDef;
 // TILE_GLYPHS (Level Design decides which of these get a map character). -------------------------
 export const WORLD_GLYPHS = {
   floor: { glyph: '.', color: 'floor' },
