@@ -1,4 +1,4 @@
-import { FONT, UI_STYLE } from '../data/style';
+import { COMBAT_STYLE, FONT, UI_STYLE } from '../data/style';
 
 /** CSS custom property names fed from data/style.ts (style.css uses only these vars). */
 export const CSS_VARS: Readonly<Record<string, string>> = {
@@ -16,6 +16,8 @@ export const CSS_VARS: Readonly<Record<string, string>> = {
   '--ui-control-active-bg': UI_STYLE.controlActiveBg,
   '--ui-text-backdrop': UI_STYLE.textBackdrop,
   '--ui-font': FONT.family,
+  /** fx_death_screen.dim (background α 0.72) – same value as COMBAT_STYLE.text.dim. */
+  '--ui-death-dim': COMBAT_STYLE.text.dim,
 };
 
 export function applyCssVars(target: HTMLElement = document.documentElement): void {

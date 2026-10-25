@@ -69,11 +69,15 @@ export function createUi(root: HTMLElement, h: UiHandlers, opts: UiOptions = {})
 
   const sub = el('div', { className: 'sub' });
   const code = el('textarea', { placeholder: STRINGS.codePlaceholder, spellcheck: false });
-  const panel = el('div', { className: 'panel' }, [
+  // Two groups: main (title, RESUME) and save tools. On low landscape screens they sit side
+  // by side (style.css), so RESUME and every save option fit without scrolling.
+  const main = el('div', { className: 'panel-main' }, [
     el('h1', { textContent: STRINGS.paused }),
     sub,
     button(STRINGS.resume, h.onResume, 'resume'),
     el('div', { className: 'sub', textContent: STRINGS.resumeHint }),
+  ]);
+  const saveTools = el('div', { className: 'panel-save' }, [
     el('div', { className: 'row' }, [
       button(STRINGS.exportFile, h.onExportFile),
       button(STRINGS.importFile, h.onImportFile),
@@ -86,6 +90,7 @@ export function createUi(root: HTMLElement, h: UiHandlers, opts: UiOptions = {})
       button(STRINGS.importCode, () => h.onImportCode(code.value)),
     ]),
   ]);
+  const panel = el('div', { className: 'panel' }, [main, saveTools]);
   const overlay = el('div', { className: 'overlay' }, [panel]);
   const toastEl = el('div', { className: 'toast', role: 'status' });
   const hint = el('div', { className: 'hint', textContent: STRINGS.hint });
@@ -100,8 +105,9 @@ export function createUi(root: HTMLElement, h: UiHandlers, opts: UiOptions = {})
   });
   root.append(toastEl);
 
-  // No browser long-press menu / callout anywhere on the game layer.
-  root.addEventListener('contextmenu', (e) => {
+  // No browser long-press menu / callout anywhere in the game: canvas #game and #ui alike
+  // (sterowanie.md §2). Only the save-code textarea keeps its menu (paste).
+  (root.ownerDocument ?? document).addEventListener('contextmenu', (e) => {
     if ((e.target as HTMLElement | null)?.tagName !== 'TEXTAREA') e.preventDefault();
   });
 
