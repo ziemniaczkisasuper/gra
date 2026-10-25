@@ -190,6 +190,31 @@ export const COMBAT_STYLE = {
   get dashTrail(): GlyphStyle {
     return glyph('·', 'player');
   },
+  /**
+   * §2.11 boss Rail Guardian part (BOSS_GLYPHS.railGuardian, col/row in the 3×2 body).
+   * normal = enemy on bossBg; telegraph = inverted like other wind-ups; flash = white cell;
+   * exposed = stun – the weak point 'R' in exposedColor (others stay normal).
+   */
+  bossPart(
+    col: number,
+    row: number,
+    mode: 'normal' | 'telegraph' | 'flash' | 'exposed',
+  ): GlyphStyle {
+    const b = BOSS_GLYPHS.railGuardian;
+    const ch = b.rows[row]?.[col] ?? '#';
+    const weak = col === b.weakPoint.col && row === b.weakPoint.row;
+    if (mode === 'flash') return glyph(ch, 'background', { bg: 'player', bold: true });
+    if (mode === 'telegraph')
+      return glyph(ch, ENEMY_SIGNALS.telegraphFg, { bg: ENEMY_SIGNALS.telegraphBg, bold: true });
+    if (mode === 'exposed' && weak)
+      return glyph(b.weakPoint.glyph, b.weakPoint.exposedColor, { bg: b.bg, bold: true });
+    return glyph(ch, b.color, { bg: b.bg, bold: b.bold });
+  },
+  /** §2.11 / GRAF §12: charge lane = the 2 track rows, '=' magenta on telegraphBg, steady
+   *  (no blink) for the whole wind-up and ride. */
+  get bossLane(): GlyphStyle {
+    return glyph('=', 'enemy', { bg: ENEMY_SIGNALS.telegraphBg });
+  },
   /** §1.9: enemy wreck (passable). */
   wreck: { ch: '%', fg: PALETTE.text } as GlyphStyle,
   /** §1.8 / GRAF: player's body = white bold on the halo. */

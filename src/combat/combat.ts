@@ -18,6 +18,7 @@ import {
   COMBAT_STRINGS,
   DEFAULT_SKILL_SLOTS,
   ENEMY_TYPES,
+  RAIL_GUARDIAN,
   SKILLS,
   SKILL_IDS,
   type CombatConfig,
@@ -26,6 +27,7 @@ import {
   type EnemyTypeId,
   type SkillId,
   EVAC_TILE,
+  enemyDiagMs,
 } from '../data/combat-m0';
 import { MAPS } from '../data/maps';
 import {
@@ -61,8 +63,23 @@ import type {
   EnemyCombat,
   FloatStyle,
   PlayerCombat,
+  PlayerHitInfo,
 } from './state';
 import { accumulateTicks, computeTicks, msToTicks } from './timing';
+import {
+  bossAi,
+  bossAlive,
+  bossArenaCheck,
+  bossCountDown,
+  bossHoldsToken,
+  bossMarkers,
+  bossResolve,
+  bossVisuals,
+  damageBoss,
+  isBossPart,
+  laneStyle,
+  resetBossArena,
+} from './boss';
 
 /** Entity kinds created / used by combat. Enemy entity kind = its EnemyTypeId. */
 export const ENEMY_KIND: EnemyTypeId = 'crawler';
@@ -203,6 +220,8 @@ export function createCombatData(state: GameState, opts: CombatInitOptions = {})
     stats: { kills: 0, deaths: 0 },
     fxIds: new Set(),
     strikes: new Map(),
+    boss: null,
+    tick: state.tick,
   };
 }
 
@@ -237,9 +256,15 @@ function initCombat(state: GameState, opts: CombatInitOptions): CombatData {
 const clampDepth = (d: number, cfg: CombatConfig) =>
   Math.min(cfg.DEPTH_HP_MULT.length, Math.max(1, Math.round(d)));
 
-/** §2.11 depth multiplier (index depth − 1); the boss (ignoresDepth) always ×1. */
-function depthMult(table: readonly number[], c: CombatData, type: EnemyTypeDef): number {
-  return type.ignoresDepth ? 1 : (table[c.depth - 1] ?? 1);
+/** §2.11 depth multiplier (index depth − 1); the boss (ignoresDepth) always ×1; `depth`
+ *  overrides the zone depth (boss summons = depth 3). */
+function depthMult(
+  table: readonly number[],
+  c: CombatData,
+  type: EnemyTypeDef,
+  depth: number | null = null,
+): number {
+  return type.ignoresDepth ? 1 : (table[(depth ?? c.depth) - 1] ?? 1);
 }
 
 /**
@@ -257,7 +282,6 @@ export function enemyDef(c: CombatData, type: EnemyTypeId): EnemyTypeDef {
     windupMs: g.ENEMY_ATK_WINDUP_MS,
     cooldownMs: g.ENEMY_ATK_COOLDOWN_MS,
     moveMs: g.ENEMY_MOVE_MS,
-    moveDiagMs: g.ENEMY_MOVE_DIAG_MS,
     detectRadius: g.ENEMY_DETECT_RADIUS,
     atkRange: g.ENEMY_ATK_RANGE,
   };
@@ -266,9 +290,9 @@ const typeOf = (c: CombatData, ec: EnemyCombat): EnemyTypeDef => enemyDef(c, ec.
 const isMobile = (d: EnemyTypeDef) => d.moveMs > 0;
 
 /** Enemy max HP for its type at the current depth: round(base × DEPTH_HP_MULT). */
-export function enemyMaxHp(c: CombatData, type: EnemyTypeId): number {
+export function enemyMaxHp(c: CombatData, type: EnemyTypeId, depth: number | null = null): number {
   const def = enemyDef(c, type);
-  return Math.round(def.hp * depthMult(c.cfg.DEPTH_HP_MULT, c, def));
+  return Math.round(def.hp * depthMult(c.cfg.DEPTH_HP_MULT, c, def, depth));
 }
 
 /** §2.11 armour (player only): DR = A/(A+K) capped, floor, min ARMOR_MIN_DMG. */
@@ -279,9 +303,9 @@ export function applyArmor(dmg: number, armor: number, cfg: CombatConfig): numbe
 }
 
 /**
- * THE damage formula (Mechanika 25.10, pt 3): roll → crit ×CRIT_MULT (floor) → Momentum
- * ×(1+bonus) (floor; position of Momentum = our choice, asked) → ×depth multiplier (round) →
- * armour floor(dmg × (1 − DR)), DR ≤ 60 %, min 1. Unused steps are neutral.
+ * THE damage formula (mechaniki v0.5.2): roll → crit ×CRIT_MULT → Momentum ×(1+bonus) →
+ * ×depth multiplier → ONE round → armour floor(dmg × (1 − DR)), DR ≤ 60 %, min 1.
+ * The depth multiplier is for enemy blows only (player blows ×1.0). Unused steps are neutral.
  */
 export function computeDamage(
   roll: number,
@@ -289,18 +313,24 @@ export function computeDamage(
   cfg: CombatConfig,
 ): number {
   let d = roll;
-  if (o.crit) d = Math.floor(d * cfg.PLAYER_CRIT_MULT);
-  if (o.momentum) d = Math.floor(d * (1 + cfg.SK1_MOMENTUM_BONUS));
-  if (o.depthMult !== undefined && o.depthMult !== 1) d = Math.round(d * o.depthMult);
+  if (o.crit) d *= cfg.PLAYER_CRIT_MULT;
+  if (o.momentum) d *= 1 + cfg.SK1_MOMENTUM_BONUS;
+  if (o.depthMult !== undefined) d *= o.depthMult;
+  d = Math.round(d);
   if (o.armor) d = applyArmor(d, o.armor, cfg);
   return d;
 }
 
-/** Enemy blow on the player: roll → ×depth (round) → player armour (§2.11). */
-export function enemyDamage(c: CombatData, type: EnemyTypeDef, roll: number): number {
+/** Enemy blow on the player: roll → ×depth → round → player armour (§2.11). */
+export function enemyDamage(
+  c: CombatData,
+  type: EnemyTypeDef,
+  roll: number,
+  depth: number | null = null,
+): number {
   return computeDamage(
     roll,
-    { depthMult: depthMult(c.cfg.DEPTH_DMG_MULT, c, type), armor: c.player.armor },
+    { depthMult: depthMult(c.cfg.DEPTH_DMG_MULT, c, type, depth), armor: c.player.armor },
     c.cfg,
   );
 }
@@ -322,7 +352,7 @@ export function enemyTicks(c: CombatData, type: EnemyTypeId): EnemyTicks {
     const k = (ms: number) => msToTicks(ms, c.cfg.TICK_MS);
     t = {
       move: k(d.moveMs),
-      moveDiag: k(d.moveDiagMs),
+      moveDiag: k(enemyDiagMs(d.moveMs, c.cfg.TICK_MS)), // v0.5.2: 1.5 × straight, ceil
       // §1.14 v0.5 GD rule: never below ENEMY_WINDUP_MIN_MS (not shortened by depth).
       windup: k(Math.max(d.windupMs, c.cfg.ENEMY_WINDUP_MIN_MS)),
       cooldown: k(d.cooldownMs),
@@ -339,6 +369,12 @@ export function enemyTicks(c: CombatData, type: EnemyTypeId): EnemyTicks {
 export interface SpawnEnemyOptions {
   /** §2.4: enemy of a contract group (no loot; flag on EnemyCombat and in 'enemyKilled'). */
   contract?: boolean;
+  /** §2.10 spawn group id (SCRAPPER_GROUP, drone pair) for the group wake-up. */
+  group?: number;
+  /** Fixed stat depth (boss summons: 3). */
+  depth?: number;
+  /** Boss summon (no loot). */
+  summoned?: boolean;
 }
 
 export function spawnEnemy(
@@ -354,7 +390,14 @@ export function spawnEnemy(
     e.id,
     newEnemyCombat(e.id, type, cell, c, combatRng(state).int(c.t.wanderMin, c.t.wanderMax)),
   );
-  if (opts.contract) c.enemies.get(e.id)!.contract = true;
+  const ec = c.enemies.get(e.id)!;
+  if (opts.contract) ec.contract = true;
+  if (opts.group !== undefined) ec.group = opts.group;
+  if (opts.summoned) ec.summoned = true;
+  if (opts.depth !== undefined) {
+    ec.depth = opts.depth;
+    ec.hp = ec.maxHp = enemyMaxHp(c, type, opts.depth);
+  }
   return e;
 }
 
@@ -412,6 +455,10 @@ function newEnemyCombat(
     hitFlash: 0,
     shock: 0,
     contract: false,
+    group: null,
+    moveCarry: 0,
+    depth: null,
+    summoned: false,
   };
 }
 
@@ -442,11 +489,44 @@ export function enemyEntities(
 
 const cellOf = (e: Cell): Cell => ({ x: e.x, y: e.y });
 
-function emit(c: CombatData, ev: CombatEvent): void {
-  c.events.push(ev);
+/**
+ * Event bus hook (LUZ 4 / FX, walka-m1.md §8): every combat event is also emitted on the game
+ * bus in the tick it happened – `'combat:event'` { tick, event } – plus the boss FX triggers
+ * (core/events FxTriggerEvents). `getCombat(state).events` (last tick only) stays as before.
+ * Output only: never read back by the simulation (determinism unaffected).
+ */
+export type CombatBusEmit = (type: string, payload: unknown) => void;
+let busEmit: CombatBusEmit | null = null;
+export function setCombatBus(fn: CombatBusEmit | null): void {
+  busEmit = fn;
+}
+/** @internal boss.ts: FX trigger on the bus. */
+export function emitBus(type: string, payload: unknown): void {
+  busEmit?.(type, payload);
 }
 
-function floatText(c: CombatData, style: FloatStyle, text: string, cell: Cell): void {
+/**
+ * setCombatFxActive (LUZ 4): true = the FX layer draws telegraph 'x' (enemy cells, boss swing
+ * zone / charge lane), strike '*' and the Dash trail, so combat does not create those fx
+ * entities. Default false = everything as before. Visual only; module-wide like reduce-motion
+ * (survives save / load); `state` is part of the agreed signature.
+ */
+let fxActive = false;
+export function setCombatFxActive(state: GameState, on: boolean): void {
+  void state;
+  fxActive = on;
+}
+export const isCombatFxActive = (): boolean => fxActive;
+
+function emit(c: CombatData, ev: CombatEvent): void {
+  c.events.push(ev);
+  busEmit?.('combat:event', { tick: c.tick, event: ev });
+}
+/** @internal boss.ts */
+export const emitCombat = emit;
+
+/** @internal boss.ts */
+export function floatText(c: CombatData, style: FloatStyle, text: string, cell: Cell): void {
   c.floats.push({ style, text, cell: { ...cell }, ttl: c.t.floatText, maxTtl: c.t.floatText });
 }
 
@@ -483,6 +563,7 @@ const SKILL_KEYS = ['skill1', 'skill2', 'skill3'] as const;
 export function combatPlayerPhase(state: GameState, actions: ActionState): void {
   const c = getCombat(state);
   c.events = [];
+  c.tick = state.tick;
   const p = state.player;
   const pc = c.player;
   const any =
@@ -583,18 +664,18 @@ function bumpAttack(state: GameState, c: CombatData, dir: Dir8 | null): boolean 
   const p = state.player;
   const pc = c.player;
   const cell = { x: p.x + dir.x, y: p.y + dir.y };
-  const hit = enemyEntities(state, c).find(({ e, ec }) => ec.ai !== 'dead' && sameCell(e, cell));
+  const hit = hostiles(state, c).find((e) => sameCell(e, cell));
   if (!hit || !canStep(state.map, p.x, p.y, dir.x, dir.y)) return false;
   if (pc.attack || p.attackWindup > 0) return true;
   p.facing = { x: dir.x, y: dir.y };
   if (p.attackCooldown > 0) {
     if (p.attackCooldown <= c.t.atkQueue) {
       pc.atkQueued = true;
-      pc.queuedTargetId = hit.e.id;
+      pc.queuedTargetId = hit.id;
     }
     return true;
   }
-  startPlayerAttack(state, c, hit.e, cellOf(hit.e));
+  startPlayerAttack(state, c, hit, cellOf(hit));
   return true;
 }
 
@@ -613,10 +694,33 @@ export function inDiagGrace(state: GameState, c: CombatData, dir: Cell): boolean
   return last.x !== 0 ? dir.x === last.x : dir.y === last.y;
 }
 
+/** Living enemies + living boss parts (everything the player side can hit). */
+function hostiles(state: GameState, c: CombatData): Entity[] {
+  const out: Entity[] = [];
+  for (const e of state.entities) {
+    const ec = c.enemies.get(e.id);
+    if (ec ? ec.ai !== 'dead' : isBossPart(c, e)) out.push(e);
+  }
+  return out;
+}
+
+function damageHostile(
+  state: GameState,
+  c: CombatData,
+  e: Entity,
+  dmg: number,
+  crit: boolean,
+  source: 'attack' | 'pulse' | 'drone',
+): void {
+  const ec = c.enemies.get(e.id);
+  if (ec) damageEnemy(state, c, e, ec, dmg, crit, source);
+  else damageBoss(state, c, dmg, crit, source, cellOf(e));
+}
+
 function livingEnemyInReach(state: GameState, c: CombatData, id: number): Entity | null {
   const ec = c.enemies.get(id);
   const e = entityById(state, id);
-  if (!e || !ec || ec.ai === 'dead') return null;
+  if (!e || (ec ? ec.ai === 'dead' : !isBossPart(c, e))) return null;
   return inMeleeReach(state.map, cellOf(state.player), cellOf(e), c.cfg.PLAYER_ATK_RANGE)
     ? e
     : null;
@@ -630,9 +734,8 @@ export function pickTarget(state: GameState, c: CombatData = getCombat(state)): 
   const p = state.player;
   let best: Entity | null = null;
   let bestKey: [number, number, number] = [Infinity, Infinity, Infinity];
-  for (const { e, ec } of enemyEntities(state, c)) {
-    if (ec.ai === 'dead' || !inMeleeReach(state.map, cellOf(p), cellOf(e), c.cfg.PLAYER_ATK_RANGE))
-      continue;
+  for (const e of hostiles(state, c)) {
+    if (!inMeleeReach(state.map, cellOf(p), cellOf(e), c.cfg.PLAYER_ATK_RANGE)) continue;
     const d = { x: e.x - p.x, y: e.y - p.y };
     const facing = Math.sign(d.x) === p.facing.x && Math.sign(d.y) === p.facing.y ? 0 : 1;
     const key: [number, number, number] = [chebyshev(p, e), facing, clockAngle(d)];
@@ -701,20 +804,30 @@ function castSkill(
 ): boolean {
   const pc = c.player;
   const p = state.player;
-  if (id === 'buddyDrone' && !freeDroneCell(state)) {
-    emit(c, { type: 'skillFailed', skill: id, reason: 'noCell' }); // no cooldown spent
+  const cd = msToTicks(SKILLS[id].cooldownMs, c.cfg.TICK_MS);
+  // v0.5.2: cooldown counts from the press (SKILL_COOLDOWN_FROM 'press'); a failed skill keeps
+  // its cooldown unspent (SKILL_FAIL_REFUND).
+  const fail = (reason: 'noCell' | 'blocked'): false => {
+    if (!c.cfg.SKILL_FAIL_REFUND) pc.skillCd[id] = cd;
+    emit(c, { type: 'skillFailed', skill: id, reason });
     return false;
+  };
+  if (id === 'buddyDrone' && !freeDroneCell(state)) return fail('noCell');
+  const dashDir: Dir8 = toDir8(actions.move) ?? {
+    x: p.facing.x as Dir8['x'],
+    y: p.facing.y as Dir8['y'],
+  };
+  if (id === 'dash' && dashPath(state, c, dashDir).length === 0) {
+    // v0.5.2: a Dash that cannot move ≥ 1 cell fails – no cooldown, no Momentum.
+    p.facing = { x: dashDir.x, y: dashDir.y };
+    return fail('blocked');
   }
-  pc.skillCd[id] = msToTicks(SKILLS[id].cooldownMs, c.cfg.TICK_MS);
+  pc.skillCd[id] = cd;
   pc.atkQueued = false;
   pc.queuedTargetId = null;
   emit(c, { type: 'skillUsed', skill: id, slot });
   if (id === 'dash') {
-    dash(
-      state,
-      c,
-      toDir8(actions.move) ?? { x: p.facing.x as Dir8['x'], y: p.facing.y as Dir8['y'] },
-    );
+    dash(state, c, dashDir);
     return true;
   }
   // Shock Pulse / Buddy Drone: wind-up blocks movement like an attack (§2.5 table).
@@ -728,10 +841,9 @@ function castSkill(
  * no corner cutting. Invulnerable for SK1_DASH_IFRAMES_MS from the start, grants Momentum.
  * Happens in the player phase before AI (§2.10), so it fits the full wind-up window.
  */
-function dash(state: GameState, c: CombatData, dir: Dir8): void {
+/** Cells the Dash leaves (start cell first); empty = cannot move (wall / actor next to it). */
+function dashPath(state: GameState, c: CombatData, dir: Dir8): Cell[] {
   const p = state.player;
-  const pc = c.player;
-  const from = cellOf(p);
   const path: Cell[] = [];
   let x = p.x;
   let y = p.y;
@@ -741,12 +853,22 @@ function dash(state: GameState, c: CombatData, dir: Dir8): void {
     x += dir.x;
     y += dir.y;
   }
+  return path;
+}
+
+function dash(state: GameState, c: CombatData, dir: Dir8): void {
+  const p = state.player;
+  const pc = c.player;
+  const from = cellOf(p);
+  const path = dashPath(state, c, dir);
+  const x = p.x + dir.x * path.length;
+  const y = p.y + dir.y * path.length;
   p.facing = { x: dir.x, y: dir.y };
   if (x !== p.x || y !== p.y) setCell(p, x, y);
   p.moveCooldown = Math.max(p.moveCooldown, 1); // the dash is this tick's move
   pc.iframes = c.t.dashIframes;
   pc.momentum = c.t.momentum;
-  for (const cell of path) addFx(state, c, cell, COMBAT_STYLE.dashTrail, c.t.dashTrail);
+  for (const cell of path) addFx(state, c, cell, COMBAT_STYLE.dashTrail, c.t.dashTrail, true);
   emit(c, { type: 'dash', from, to: { x, y }, path });
 }
 
@@ -782,12 +904,15 @@ function shockPulse(state: GameState, c: CombatData): void {
   const p = state.player;
   const rng = combatRng(state);
   emit(c, { type: 'shockPulse', center: cellOf(p), radius: c.cfg.SK2_PULSE_RADIUS });
-  for (const { e, ec } of enemyEntities(state, c)) {
-    if (ec.ai === 'dead' || chebyshev(p, e) > c.cfg.SK2_PULSE_RADIUS) continue;
-    if (!lineOfSight(state.map, p, e)) continue;
+  let bossDone = false;
+  for (const e of hostiles(state, c)) {
+    if (chebyshev(p, e) > c.cfg.SK2_PULSE_RADIUS || !lineOfSight(state.map, p, e)) continue;
+    const ec = c.enemies.get(e.id);
+    if (!ec && bossDone) continue; // the boss is hit once, not per part
     const dmg = rng.int(c.cfg.SK2_PULSE_DMG_MIN, c.cfg.SK2_PULSE_DMG_MAX);
-    damageEnemy(state, c, e, ec, dmg, false, 'pulse');
-    applyShock(c, e, ec);
+    damageHostile(state, c, e, dmg, false, 'pulse');
+    if (ec) applyShock(c, e, ec);
+    else bossDone = true; // boss: damage only, no Shock (no interrupt) [R]
   }
 }
 
@@ -806,6 +931,8 @@ function applyShock(c: CombatData, e: Entity, ec: EnemyCombat): void {
 function deployDrone(state: GameState, c: CombatData): void {
   const cell = freeDroneCell(state);
   if (!cell) {
+    // Cell taken during the wind-up: also a skillFailed → cooldown refunded (SKILL_FAIL_REFUND).
+    if (c.cfg.SKILL_FAIL_REFUND) c.player.skillCd.buddyDrone = 0;
     emit(c, { type: 'skillFailed', skill: 'buddyDrone', reason: 'noCell' });
     return;
   }
@@ -885,23 +1012,22 @@ function droneFire(state: GameState, c: CombatData): void {
   const d = c.drone;
   const de = droneEntity(state, c);
   if (!d || !de || d.fireTimer > 0) return;
-  let best: { e: Entity; ec: EnemyCombat } | null = null;
+  let best: Entity | null = null;
   let bestDist = Infinity;
-  for (const it of enemyEntities(state, c)) {
-    if (it.ec.ai === 'dead') continue;
-    const dist = chebyshev(de, it.e);
+  for (const e of hostiles(state, c)) {
+    const dist = chebyshev(de, e);
     if (dist > c.cfg.SK3_DRONE_RANGE || dist >= bestDist) continue;
-    if (!lineOfSight(state.map, de, it.e)) continue;
-    best = it;
+    if (!lineOfSight(state.map, de, e)) continue;
+    best = e;
     bestDist = dist;
   }
   if (!best) return; // keeps the shot ready
   d.fireTimer = c.t.droneFire;
   let dmg = combatRng(state).int(c.cfg.SK3_DRONE_DMG_MIN, c.cfg.SK3_DRONE_DMG_MAX);
-  if (best.ec.shock > 0) dmg *= c.cfg.SK3_DRONE_SHOCK_MULT;
-  addFx(state, c, cellOf(best.e), COMBAT_STYLE.droneShot, c.t.strikeFx);
-  emit(c, { type: 'droneShot', enemyId: best.e.id, dmg });
-  damageEnemy(state, c, best.e, best.ec, dmg, false, 'drone');
+  if ((c.enemies.get(best.id)?.shock ?? 0) > 0) dmg *= c.cfg.SK3_DRONE_SHOCK_MULT;
+  addFx(state, c, cellOf(best), COMBAT_STYLE.droneShot, c.t.strikeFx);
+  emit(c, { type: 'droneShot', enemyId: best.id, dmg });
+  damageHostile(state, c, best, dmg, false, 'drone');
 }
 
 // =============================================================================================
@@ -911,10 +1037,13 @@ function droneFire(state: GameState, c: CombatData): void {
 export function combatWorldPhase(state: GameState, actions: ActionState): void {
   void actions;
   const c = getCombat(state);
+  c.tick = state.tick;
   if (c.death) {
     stepDeath(state, c);
   } else {
     applyPlayerMoveAffix(state, c); // engine just moved the player (step 2) – §2.5 speed affix
+    bossArenaCheck(state, c); // §2.11 leaving the arena resets the boss (temporary trigger)
+    bossAi(state, c); // 3 – the boss first (takes its melee token before the enemies)
     const enemies = enemyEntities(state, c);
     const requests: AttackRequest[] = [];
     for (const { e, ec } of enemies) enemyAi(state, c, e, ec, requests); // 3
@@ -922,6 +1051,7 @@ export function combatWorldPhase(state: GameState, actions: ActionState): void {
     resolveCast(state, c); // 4a – player side first: skill wind-up,
     resolvePlayerBlow(state, c); //      basic blow,
     droneFire(state, c); //               drone shot
+    bossResolve(state, c); // 4b – boss swing / charge step
     for (const { e, ec } of enemies) resolveEnemyBlow(state, c, e, ec); // 4b
     for (const { e, ec } of enemies) enemyLifecycle(state, c, e, ec); // 5
     droneLifecycle(state, c);
@@ -1035,13 +1165,14 @@ function enemyAi(
 
 /**
  * ROBOCZE: groups / pairs (Scrapper, Panel Drone) – an enemy that leaves IDLE wakes idle
- * enemies of the same type within ENEMY_GROUP_ALERT_RADIUS that see it.
+ * enemies of the same spawn group within ENEMY_GROUP_WAKE_RADIUS that see it (no chain).
  */
 function groupAlert(state: GameState, c: CombatData, e: Entity, ec: EnemyCombat): void {
-  const r = c.cfg.ENEMY_GROUP_ALERT_RADIUS;
-  if (r <= 0 || !typeOf(c, ec).groupAlert) return;
+  const r = c.cfg.ENEMY_GROUP_WAKE_RADIUS;
+  if (r <= 0 || ec.group === null) return;
+  // No chain: woken enemies go straight to ALERT and never call groupAlert themselves.
   for (const o of enemyEntities(state, c)) {
-    if (o.ec === ec || o.ec.type !== ec.type || o.ec.ai !== 'idle') continue;
+    if (o.ec === ec || o.ec.group !== ec.group || o.ec.ai !== 'idle') continue;
     if (chebyshev(o.e, e) > r || !lineOfSight(state.map, o.e, e)) continue;
     o.ec.ai = 'alert';
     o.ec.stateTimer = c.t.enemyAlert;
@@ -1128,13 +1259,33 @@ function act(
 
 /** Held tokens = wind-ups in progress. Player: 2 melee + 1 ranged; drone: 2 of any kind. */
 function heldTokens(c: CombatData, target: AttackTarget, kind?: EnemyTypeDef['attack']): number {
-  let n = 0;
+  // §2.11: an attacking boss holds BOSS_MELEE_TOKENS of the player's melee tokens.
+  let n =
+    target === 'player' && kind !== 'ranged' && bossHoldsToken(c)
+      ? RAIL_GUARDIAN.BOSS_MELEE_TOKENS
+      : 0;
   for (const ec of c.enemies.values()) {
     if (ec.attack?.target !== target) continue;
     if (kind && typeOf(c, ec).attack !== kind) continue;
     n++;
   }
   return n;
+}
+
+/** @internal boss.ts: the boss may start an attack (melee token room + stagger). */
+export function meleeTokenFree(state: GameState, c: CombatData): boolean {
+  if (!c.cfg.ATTACK_TOKENS_ENABLED) return true;
+  if (
+    heldTokens(c, 'player', 'melee') + RAIL_GUARDIAN.BOSS_MELEE_TOKENS >
+    c.cfg.ATTACK_TOKENS_MELEE
+  )
+    return false;
+  return state.tick - c.tokenTick.player >= c.t.tokenStagger;
+}
+
+/** @internal boss.ts: the boss took its token this tick (stagger for the next one). */
+export function takeMeleeToken(state: GameState, c: CombatData): void {
+  if (c.cfg.ATTACK_TOKENS_ENABLED) c.tokenTick.player = state.tick;
 }
 
 function tokenRoom(c: CombatData, target: AttackTarget, def: EnemyTypeDef): boolean {
@@ -1174,12 +1325,24 @@ function startEnemyAttack(
   e.facing = { x: Math.sign(aim.x - e.x), y: Math.sign(aim.y - e.y) };
 }
 
-/** Moved this tick with Shock: step time × SK2_SHOCK_MOVE_TIME_MULT. */
+/**
+ * A step STARTED this tick under Shock: its time × SHOCK_MOVE_MULT through the tick
+ * accumulator (straight and diagonal). Steps already running are never recomputed.
+ */
 function shockStep(c: CombatData, e: Entity, ec: EnemyCombat): void {
   if (ec.shock <= 0) return;
-  const t = Math.round(e.moveTicks * c.cfg.SK2_SHOCK_MOVE_TIME_MULT);
-  e.moveTicks = t;
-  e.moveCooldown = t;
+  const def = typeOf(c, ec);
+  const diag = e.x !== e.fromX && e.y !== e.fromY;
+  const base = diag ? enemyDiagMs(def.moveMs, c.cfg.TICK_MS) : def.moveMs;
+  const r = accumulateTicks(
+    base * c.cfg.SHOCK_MOVE_MULT,
+    c.cfg.TICK_MS,
+    ec.moveCarry,
+    c.cfg.ACTION_TICK_ACCUMULATOR,
+  );
+  ec.moveCarry = r.carry;
+  e.moveTicks = r.ticks;
+  e.moveCooldown = r.ticks;
 }
 
 /** One BFS step (recomputed every step, §1.6). Blocked → wait and retry next tick. */
@@ -1280,12 +1443,12 @@ function resolvePlayerBlow(state: GameState, c: CombatData): void {
   const momentum = pc.momentum > 0; // §2.5: the first basic blow after Dash uses it up
   pc.momentum = 0;
   const reach = (e: Entity) => inMeleeReach(state.map, p, e, c.cfg.PLAYER_ATK_RANGE);
-  let victim: { e: Entity; ec: EnemyCombat } | undefined;
-  for (const it of enemyEntities(state, c)) {
-    if (it.ec.ai === 'dead' || !reach(it.e)) continue;
-    if (a.targetId !== null ? it.e.id === a.targetId : sameCell(it.e, a.aim)) victim = it;
+  let victim: Entity | undefined;
+  for (const e of hostiles(state, c)) {
+    if (!reach(e)) continue;
+    if (a.targetId !== null ? e.id === a.targetId : sameCell(e, a.aim)) victim = e;
   }
-  addFx(state, c, victim ? cellOf(victim.e) : a.aim, COMBAT_STYLE.strike, c.t.strikeFx);
+  addFx(state, c, victim ? cellOf(victim) : a.aim, COMBAT_STYLE.strike, c.t.strikeFx, true);
   if (!victim) {
     emit(c, { type: 'playerWhiff' });
     if (a.targetId !== null) {
@@ -1299,7 +1462,7 @@ function resolvePlayerBlow(state: GameState, c: CombatData): void {
   const base = rng.int(cfg.PLAYER_DMG_MIN, cfg.PLAYER_DMG_MAX);
   const crit = rng.next() < cfg.PLAYER_CRIT_CHANCE;
   const dmg = computeDamage(base, { crit, momentum }, cfg); // enemies have no armour (§2.11)
-  damageEnemy(state, c, victim.e, victim.ec, dmg, crit, 'attack');
+  damageHostile(state, c, victim, dmg, crit, 'attack');
 }
 
 function resolveEnemyBlow(state: GameState, c: CombatData, e: Entity, ec: EnemyCombat): void {
@@ -1311,7 +1474,14 @@ function resolveEnemyBlow(state: GameState, c: CombatData, e: Entity, ec: EnemyC
   const def = typeOf(c, ec);
   e.attackCooldown = enemyTicks(c, ec.type).cooldown;
   const ranged = def.attack === 'ranged';
-  addFx(state, c, a.aim, ranged ? COMBAT_STYLE.rangedStrike : COMBAT_STYLE.strike, c.t.strikeFx);
+  addFx(
+    state,
+    c,
+    a.aim,
+    ranged ? COMBAT_STYLE.rangedStrike : COMBAT_STYLE.strike,
+    c.t.strikeFx,
+    true,
+  );
   const roll = combatRng(state).int(def.dmgMin, def.dmgMax);
   if (a.target === 'drone') {
     // §2.10: blows on the drone never hurt the player.
@@ -1320,7 +1490,7 @@ function resolveEnemyBlow(state: GameState, c: CombatData, e: Entity, ec: EnemyC
     if (d && de && sameCell(de, a.aim)) {
       const dmg = computeDamage(
         roll,
-        { depthMult: depthMult(c.cfg.DEPTH_DMG_MULT, c, def) },
+        { depthMult: depthMult(c.cfg.DEPTH_DMG_MULT, c, def, ec.depth) },
         c.cfg,
       );
       d.hp -= dmg;
@@ -1330,37 +1500,68 @@ function resolveEnemyBlow(state: GameState, c: CombatData, e: Entity, ec: EnemyC
     return;
   }
   const p = state.player;
-  const pc = c.player;
-  if (pc.hp > 0 && sameCell(p, a.aim) && !isPlayerEvacuated(state)) {
-    if (pc.iframes > 0) {
-      floatText(c, 'miss', COMBAT_STRINGS.miss, a.aim);
-      emit(c, { type: 'playerDodged', enemyId: e.id });
-      return;
-    }
-    const dmg = enemyDamage(c, def, roll);
-    pc.hp -= dmg;
-    pc.hitFlash = c.t.hitFlash;
-    pc.lastCombatTick = state.tick;
-    floatText(c, 'dmgToPlayer', `-${dmg}`, a.aim);
-    emit(c, { type: 'playerHit', dmg, enemyId: e.id });
-    c.recentHits.push({
-      enemyType: ec.type,
-      enemyIndex: enemyEntities(state, c).findIndex((q) => q.e === e),
-      from: cellOf(e),
-      aim: { ...a.aim },
-      dmg,
-      tick: state.tick,
-    });
-    if (c.recentHits.length > DEATH_HITS_KEPT) c.recentHits.shift();
-    // §1.11 trigger D: hit while no input for AUTOPAUSE_IDLE_HIT_MS.
-    if (state.tick - c.lastInputTick >= c.t.autopauseIdleHit) {
-      c.pauseRequested = true;
-      emit(c, { type: 'autoPauseRequest', reason: 'hitWhileAway' });
-    }
-  } else {
-    floatText(c, 'miss', COMBAT_STRINGS.miss, cellOf(e));
-    emit(c, { type: 'enemyMiss', enemyId: e.id });
+  if (sameCell(p, a.aim)) {
+    const r = hitPlayer(
+      state,
+      c,
+      enemyDamage(c, def, roll, ec.depth),
+      {
+        enemyType: ec.type,
+        enemyIndex: enemyEntities(state, c).findIndex((q) => q.e === e),
+        from: cellOf(e),
+        aim: { ...a.aim },
+      },
+      e.id,
+    );
+    if (r !== 'missed') return;
   }
+  floatText(c, 'miss', COMBAT_STRINGS.miss, cellOf(e));
+  emit(c, { type: 'enemyMiss', enemyId: e.id });
+}
+
+/**
+ * @internal A blow lands on the player's cell (enemy or boss): i-frames → dodge, evacuated /
+ * dead → miss, else damage + S12 hit record + trigger D. `dmg` is final (after armour).
+ */
+export function hitPlayer(
+  state: GameState,
+  c: CombatData,
+  dmg: number,
+  info: Omit<PlayerHitInfo, 'dmg' | 'tick'>,
+  enemyId = -1,
+): 'hit' | 'dodged' | 'missed' {
+  const pc = c.player;
+  if (pc.hp <= 0 || isPlayerEvacuated(state)) return 'missed';
+  if (pc.iframes > 0) {
+    floatText(c, 'miss', COMBAT_STRINGS.miss, info.aim);
+    emit(c, { type: 'playerDodged', enemyId });
+    return 'dodged';
+  }
+  pc.hp -= dmg;
+  pc.hitFlash = c.t.hitFlash;
+  pc.lastCombatTick = state.tick;
+  floatText(c, 'dmgToPlayer', `-${dmg}`, info.aim);
+  emit(c, { type: 'playerHit', dmg, enemyId });
+  c.recentHits.push({
+    ...info,
+    from: { ...info.from },
+    aim: { ...info.aim },
+    dmg,
+    tick: state.tick,
+  });
+  if (c.recentHits.length > DEATH_HITS_KEPT) c.recentHits.shift();
+  // §1.11 trigger D: hit while no input for AUTOPAUSE_IDLE_HIT_MS.
+  if (state.tick - c.lastInputTick >= c.t.autopauseIdleHit) {
+    c.pauseRequested = true;
+    emit(c, { type: 'autoPauseRequest', reason: 'hitWhileAway' });
+  }
+  return 'hit';
+}
+
+/** @internal boss reset: removes a (summoned) enemy entirely (entity + combat data). */
+export function removeEnemyEntity(state: GameState, c: CombatData, e: Entity): void {
+  c.enemies.delete(e.id);
+  state.entities = state.entities.filter((q) => q !== e);
 }
 
 // ---- 5. death / respawn / regen ----------------------------------------------------------------
@@ -1399,10 +1600,13 @@ function droneLifecycle(state: GameState, c: CombatData): void {
 }
 
 function resetEnemy(state: GameState, c: CombatData, e: Entity, ec: EnemyCombat): void {
+  const keep = { contract: ec.contract, group: ec.group, depth: ec.depth, summoned: ec.summoned };
   Object.assign(
     ec,
     newEnemyCombat(ec.id, ec.type, ec.spawn, c, combatRng(state).int(c.t.wanderMin, c.t.wanderMax)),
+    keep,
   );
+  ec.hp = ec.maxHp = enemyMaxHp(c, ec.type, ec.depth);
   setCell(e, ec.spawn.x, ec.spawn.y);
   e.solid = true;
   e.moveCooldown = 0;
@@ -1449,6 +1653,7 @@ function stepDeath(state: GameState, c: CombatData): void {
   c.death = null;
   c.deathCause = null;
   c.recentHits = [];
+  resetBossArena(state, c); // [R] the boss fight restarts too (summons removed first)
   for (const { e, ec } of enemyEntities(state, c))
     if (ec.ai !== 'dead' || c.cfg.ENEMY_RESPAWN_ENABLED) resetEnemy(state, c, e, ec);
   setCell(p, old.spawn.x, old.spawn.y);
@@ -1481,13 +1686,17 @@ function regen(state: GameState, c: CombatData): void {
 
 // ---- visuals (data only: glyphs of entities + fx entities; the renderer just draws) -----------
 
-function addFx(
+/** @internal Timed fx entity. `fxLayerOwned` (strike, Dash trail): skipped when the FX layer
+ *  is active (setCombatFxActive). */
+export function addFx(
   state: GameState,
   c: CombatData,
   cell: Cell,
   style: GlyphStyle,
   ticks: number,
+  fxLayerOwned = false,
 ): void {
+  if (fxLayerOwned && fxActive) return;
   const fx = createEntity(FX_KIND, cell.x, cell.y, style);
   fx.solid = false;
   state.entities.push(fx);
@@ -1543,7 +1752,7 @@ function updateVisuals(state: GameState, c: CombatData): void {
       continue;
     }
     e.glyph = enemyGlyph(ec);
-    if (!ec.attack) continue;
+    if (!ec.attack || fxActive) continue; // FX layer draws the telegraph cells
     const ranged = typeOf(c, ec).attack === 'ranged';
     const cellStyle = ranged ? COMBAT_STYLE.rangedTargetCell : COMBAT_STYLE.telegraphCell;
     const ticksToBlow = Math.max(0, e.attackWindup - RESOLVES_NOW);
@@ -1558,6 +1767,27 @@ function updateVisuals(state: GameState, c: CombatData): void {
           };
     } else {
       const m = createEntity(FX_KIND, ec.attack.aim.x, ec.attack.aim.y, cellStyle);
+      m.solid = false;
+      markers.push(m);
+    }
+  }
+  bossVisuals(state, c);
+  const bm = fxActive ? null : bossMarkers(c);
+  if (bm) {
+    const swing = bm.style === 'swing';
+    const on = swing ? telegraphBlinkOn(bm.ticksToBlow, c) : true; // lane: steady (S14)
+    const cellStyle = swing ? COMBAT_STYLE.telegraphCell : laneStyle(c);
+    for (const cell of bm.cells) {
+      if (sameCell(p, cell) && !c.death) {
+        playerGlyph = on
+          ? cellStyle
+          : {
+              ...COMBAT_STYLE.playerOnTelegraph,
+              bg: cellStyle.bg ?? COMBAT_STYLE.playerOnTelegraph.bg,
+            };
+        continue;
+      }
+      const m = createEntity(FX_KIND, cell.x, cell.y, cellStyle);
       m.solid = false;
       markers.push(m);
     }
@@ -1594,6 +1824,7 @@ function countDown(c: CombatData): void {
     c.drone.fireTimer = dec(c.drone.fireTimer);
     c.drone.hitFlash = dec(c.drone.hitFlash);
   }
+  bossCountDown(c);
   for (const [id, left] of c.strikes) c.strikes.set(id, dec(left));
   for (const f of c.floats) f.ttl--;
   c.floats = c.floats.filter((f) => f.ttl > 0);
@@ -1637,10 +1868,20 @@ export interface BossChargeLane {
   ticksLeft: number;
 }
 
-/** S14: current charge lane or null. The boss is not implemented yet → always null (API shape). */
+/**
+ * S14: current charge lane or null. Wind-up: the WHOLE 2-row track (wall to wall, body
+ * excluded), ticksLeft = ticks to the ride; ride: cells still ahead (passed cells drop out),
+ * ticksLeft = ticks to the next cell. Copies – safe to keep.
+ */
 export function getBossChargeLane(state: GameState): BossChargeLane | null {
-  void state;
-  return null;
+  const b = peekCombat(state)?.boss;
+  if (!b?.charge || (b.phase !== 'chargeWindup' && b.phase !== 'charging')) return null;
+  return {
+    dir: { ...b.charge.dir },
+    cells: b.charge.lane.map(cellOf),
+    phase: b.phase === 'chargeWindup' ? 'windup' : 'charging',
+    ticksLeft: b.phase === 'chargeWindup' ? b.timer : b.charge.stepTimer,
+  };
 }
 
 export function getCombatHud(state: GameState): {
@@ -1652,6 +1893,8 @@ export function getCombatHud(state: GameState): {
   skillsEnabled: boolean;
   skills: CombatHudSkill[];
   drone: { hp: number; maxHp: number; lifeLeftMs: number } | null;
+  /** §2.11 boss HP bar (null = no living boss engaged / on the level). */
+  boss: { hp: number; maxHp: number; phase: string; weakPoint: boolean } | null;
 } {
   const c = getCombat(state);
   const pc = c.player;
@@ -1683,6 +1926,15 @@ export function getCombatHud(state: GameState): {
           lifeLeftMs: c.drone.life * c.cfg.TICK_MS,
         }
       : null,
+    boss:
+      c.boss && bossAlive(c)
+        ? {
+            hp: c.boss.hp,
+            maxHp: c.boss.maxHp,
+            phase: c.boss.phase,
+            weakPoint: c.boss.phase === 'stunned',
+          }
+        : null,
   };
 }
 

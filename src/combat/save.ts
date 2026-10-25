@@ -1,7 +1,7 @@
 // Combat save section 'combat' (save v3, save/sections.ts) – PROG / Gameplay.
 // Registered at module top level; imported by combat/install.ts so it exists before main.ts loads.
 //
-// What is saved (CombatSave v2, JSON; v1 is migrated on load): everything the combat simulation needs to continue
+// What is saved (CombatSave v3, JSON; v1 → v2 → v3 are migrated on load): everything the combat simulation needs to continue
 // tick-exact after an auto-pause save – HP, AI states, timers, frozen target cells, carries,
 // and the engine counters of combat actors (moveCooldown / attackWindup / attackCooldown – the
 // engine saves only the player's cell and facing). NOT saved:
@@ -12,7 +12,13 @@
 //   - entity ids: they are not stable between runs → enemies are an ordered list (= AI order),
 //     references to enemies are list indexes.
 import type { GameState } from '../core/game';
-import { ENEMY_TYPES, SKILL_IDS, type EnemyTypeId, type SkillId } from '../data/combat-m0';
+import {
+  ENEMY_TYPES,
+  RAIL_GUARDIAN,
+  SKILL_IDS,
+  type EnemyTypeId,
+  type SkillId,
+} from '../data/combat-m0';
 import { COMBAT_STYLE } from '../data/style';
 import { createEntity, setCell, type Entity } from '../entities/entity';
 import { SaveError } from '../save/schema';
@@ -27,9 +33,13 @@ import {
   peekCombat,
   setCombat,
 } from './combat';
+import { createBossParts } from './boss';
 import type { Cell } from './grid';
+import { BOSS_TYPE } from './state';
 import type {
   AttackTarget,
+  BossPhase,
+  BossState,
   CombatData,
   DeathCause,
   EnemyAi,
@@ -37,7 +47,7 @@ import type {
   PlayerHitInfo,
 } from './state';
 
-export const COMBAT_SAVE_VERSION = 2;
+export const COMBAT_SAVE_VERSION = 3;
 
 /** Engine counters of an actor (whole ticks). */
 export interface CountersSave {
@@ -55,7 +65,8 @@ export interface PlayerCombatSave extends CountersSave {
   atkCarry: number;
   moveCarry: number;
   spawn: Cell;
-  /** Pending blow: target = index into `enemies` (null = tap at `aim`). */
+  /** Pending blow: target = index into `enemies`; v3: n + part index = a boss part
+   *  (n = enemies.length); null = tap at `aim`. */
   attack: { target: number | null; aim: Cell } | null;
   atkQueued: boolean;
   /** §2.6 queued bump target (index into `enemies`). */
@@ -96,7 +107,15 @@ export interface EnemySave extends CountersSave {
   shock: number;
   /** v2: §2.4 contract enemy. */
   contract: boolean;
+  /** v3: §2.10 spawn group, Shock step carry, fixed stat depth, boss summon. */
+  group: number | null;
+  moveCarry: number;
+  depth: number | null;
+  summoned: boolean;
 }
+
+/** v3: §2.11 boss Rail Guardian (parts are recreated from x / y). */
+export type BossSave = Omit<BossState, 'partIds'>;
 
 /** v2: sk3 Buddy Drone. */
 export interface DroneSave {
@@ -125,6 +144,8 @@ export interface CombatSave {
   /** v2 – S12: last ≤ 3 hits on the player and the death cause (until respawn). */
   recentHits: PlayerHitInfo[];
   deathCause: DeathCause | null;
+  /** v3 */
+  boss: BossSave | null;
 }
 
 /** null = no combat state yet (new game / save from before combat started) → lazy init. */
@@ -148,7 +169,9 @@ export function serializeCombat(state: GameState): CombatSave | typeof EMPTY_COM
   const index = (id: number | null) => {
     if (id === null) return null;
     const i = list.findIndex((e) => e.id === id);
-    return i < 0 ? null : i;
+    if (i >= 0) return i;
+    const part = c.boss ? c.boss.partIds.indexOf(id) : -1;
+    return part < 0 ? null : list.length + part;
   };
   const p = c.player;
   const corpse = state.entities.find((e) => e.kind === CORPSE_KIND);
@@ -201,6 +224,10 @@ export function serializeCombat(state: GameState): CombatSave | typeof EMPTY_COM
         hitFlash: ec.hitFlash,
         shock: ec.shock,
         contract: ec.contract,
+        group: ec.group,
+        moveCarry: ec.moveCarry,
+        depth: ec.depth,
+        summoned: ec.summoned,
       };
     }),
     death: c.death ? { ...c.death } : null,
@@ -216,6 +243,37 @@ export function serializeCombat(state: GameState): CombatSave | typeof EMPTY_COM
           lastHits: c.deathCause.lastHits.map(hitCopy),
         }
       : null,
+    boss: c.boss ? bossCopy(c.boss) : null,
+  };
+}
+
+function bossCopy(b: BossState | BossSave): BossSave {
+  return {
+    x: b.x,
+    y: b.y,
+    spawn: cell(b.spawn),
+    hp: b.hp,
+    maxHp: b.maxHp,
+    phase: b.phase,
+    timer: b.timer,
+    moveCooldown: b.moveCooldown,
+    facing: cell(b.facing),
+    sinceCharge: b.sinceCharge,
+    trackY: b.trackY,
+    arena: { ...b.arena },
+    playerLeft: b.playerLeft,
+    introDone: b.introDone,
+    swing: b.swing ? b.swing.map(cell) : null,
+    charge: b.charge
+      ? {
+          dir: cell(b.charge.dir),
+          lane: b.charge.lane.map(cell),
+          hit: b.charge.hit,
+          stepTimer: b.charge.stepTimer,
+        }
+      : null,
+    summoned: b.summoned,
+    hitFlash: b.hitFlash,
   };
 }
 
@@ -320,7 +378,29 @@ export function migrateCombatV1(o: Obj): Obj {
   return out;
 }
 
-const SAVE_MIGRATIONS: Record<number, (o: Obj) => Obj> = { 1: migrateCombatV1 };
+/**
+ * v2 → v3 (pure, on a copy): no boss yet; enemies get the v0.5.2 fields with neutral defaults
+ * (no spawn group, no Shock carry, zone depth, not a summon).
+ */
+export function migrateCombatV2(o: Obj): Obj {
+  const out: Obj = { ...o, v: 3 };
+  if (o.empty === true) return out;
+  if (!Array.isArray(o.enemies)) fail('enemies');
+  out.enemies = o.enemies.map((v, i) => ({
+    ...obj(v, `enemies[${i}]`),
+    group: null,
+    moveCarry: 0,
+    depth: null,
+    summoned: false,
+  }));
+  out.boss = null;
+  return out;
+}
+
+const SAVE_MIGRATIONS: Record<number, (o: Obj) => Obj> = {
+  1: migrateCombatV1,
+  2: migrateCombatV2,
+};
 
 export function deserializeCombat(raw: unknown): CombatSaveValue {
   if (raw === null || raw === undefined) return null;
@@ -335,9 +415,11 @@ export function deserializeCombat(raw: unknown): CombatSaveValue {
   const ea = o.enemies;
   if (!Array.isArray(ea)) fail('enemies');
   const n = ea.length;
+  const boss = o.boss === null || o.boss === undefined ? null : bossOf(obj(o.boss, 'boss'));
+  const targets = n + (boss ? RAIL_GUARDIAN.BOSS_W * RAIL_GUARDIAN.BOSS_H : 0);
   const idx = (v: unknown, path: string): number | null => {
     if (v === null) return null;
-    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v >= n) fail(path);
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v >= targets) fail(path);
     return v;
   };
 
@@ -405,6 +487,10 @@ export function deserializeCombat(raw: unknown): CombatSaveValue {
       hitFlash: int(e, 'hitFlash', path),
       shock: int(e, 'shock', path),
       contract: bool(e, 'contract', path),
+      group: e.group === null ? null : int(e, 'group', path, -1e9),
+      moveCarry: num(e, 'moveCarry', path),
+      depth: e.depth === null ? null : int(e, 'depth', path, 1),
+      summoned: bool(e, 'summoned', path),
     };
   });
 
@@ -439,16 +525,74 @@ export function deserializeCombat(raw: unknown): CombatSaveValue {
     },
     recentHits: hitsOf(o.recentHits, 'recentHits', n),
     deathCause: o.deathCause === null ? null : deathCauseOf(obj(o.deathCause, 'deathCause'), n),
+    boss,
+  };
+}
+
+const BOSS_PHASES: readonly BossPhase[] = [
+  'idle',
+  'chase',
+  'swing',
+  'recover',
+  'toTrack',
+  'chargeWindup',
+  'charging',
+  'stunned',
+  'summon',
+  'dead',
+];
+
+function bossOf(b: Obj): BossSave {
+  if (!BOSS_PHASES.includes(b.phase as BossPhase)) fail('boss.phase');
+  const ar = obj(b.arena, 'boss.arena');
+  const cells = (v: unknown, path: string): Cell[] => {
+    if (!Array.isArray(v)) fail(path);
+    return v.map((q, i) => cellOf(q, `${path}[${i}]`));
+  };
+  const ch = b.charge === null ? null : obj(b.charge, 'boss.charge');
+  return {
+    x: int(b, 'x', 'boss', -1e6),
+    y: int(b, 'y', 'boss', -1e6),
+    spawn: cellOf(b.spawn, 'boss.spawn'),
+    hp: int(b, 'hp', 'boss', 0),
+    maxHp: int(b, 'maxHp', 'boss', 1),
+    phase: b.phase as BossPhase,
+    timer: int(b, 'timer', 'boss'),
+    moveCooldown: int(b, 'moveCooldown', 'boss'),
+    facing: dirOf(b.facing, 'boss.facing'),
+    sinceCharge: int(b, 'sinceCharge', 'boss'),
+    trackY: b.trackY === null ? null : int(b, 'trackY', 'boss', -1e6),
+    arena: {
+      x0: int(ar, 'x0', 'boss.arena', -1e6),
+      y0: int(ar, 'y0', 'boss.arena', -1e6),
+      x1: int(ar, 'x1', 'boss.arena', -1e6),
+      y1: int(ar, 'y1', 'boss.arena', -1e6),
+    },
+    playerLeft: bool(b, 'playerLeft', 'boss'),
+    introDone: bool(b, 'introDone', 'boss'),
+    swing: b.swing === null ? null : cells(b.swing, 'boss.swing'),
+    charge: ch
+      ? {
+          dir: dirOf(ch.dir, 'boss.charge.dir'),
+          lane: cells(ch.lane, 'boss.charge.lane'),
+          hit: bool(ch, 'hit', 'boss.charge'),
+          stepTimer: int(ch, 'stepTimer', 'boss.charge'),
+        }
+      : null,
+    summoned: bool(b, 'summoned', 'boss'),
+    hitFlash: int(b, 'hitFlash', 'boss'),
   };
 }
 
 function hitOf(v: unknown, path: string, n: number): PlayerHitInfo {
   const h = obj(v, path);
-  if (typeof h.enemyType !== 'string' || !(h.enemyType in ENEMY_TYPES)) fail(`${path}.enemyType`);
+  const isBoss = h.enemyType === BOSS_TYPE;
+  if (typeof h.enemyType !== 'string' || !(isBoss || h.enemyType in ENEMY_TYPES))
+    fail(`${path}.enemyType`);
   const enemyIndex = int(h, 'enemyIndex', path, -1);
-  if (enemyIndex >= n) fail(`${path}.enemyIndex`);
+  if (enemyIndex >= n || (isBoss && enemyIndex !== -1)) fail(`${path}.enemyIndex`);
   return {
-    enemyType: h.enemyType as EnemyTypeId,
+    enemyType: h.enemyType as EnemyTypeId | typeof BOSS_TYPE,
     enemyIndex,
     from: cellOf(h.from, `${path}.from`),
     aim: cellOf(h.aim, `${path}.aim`),
@@ -535,14 +679,23 @@ export function applyCombat(state: GameState, s: CombatSaveValue): void {
       hitFlash: es.hitFlash,
       shock: es.shock,
       contract: es.contract,
+      group: es.group,
+      moveCarry: es.moveCarry,
+      depth: es.depth,
+      summoned: es.summoned,
     };
     e.glyph = ec.ai === 'dead' ? COMBAT_STYLE.wreck : enemyGlyph(ec);
     c.enemies.set(e.id, ec);
     state.entities.push(e);
     ids.push(e.id);
   }
+  if (s.boss) {
+    c.boss = { ...bossCopy(s.boss), partIds: [] };
+    createBossParts(state, c);
+  }
   const ps = s.player;
-  const id = (i: number | null) => (i === null ? null : ids[i]!);
+  const id = (i: number | null) =>
+    i === null ? null : i < ids.length ? ids[i]! : (c.boss?.partIds[i - ids.length] ?? null);
   Object.assign(c.player, {
     hp: ps.hp,
     maxHp: ps.maxHp,

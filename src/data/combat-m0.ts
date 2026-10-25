@@ -56,8 +56,15 @@ export const COMBAT_EXTRAS = {
   SK2_PULSE_WINDUP_MS: 150,
   SK2_PULSE_COOLDOWN_MS: 8000,
   SK2_SHOCK_MS: 2000,
-  /** ROBOCZE: "ruch −50%" read as step time ×2 (speed halved) – question to Mechanics. */
-  SK2_SHOCK_MOVE_TIME_MULT: 2,
+  /** §2.5 v0.5.2: steps STARTED under Shock take ×2 (straight and diagonal, via the tick
+   *  accumulator); a step already running is not recomputed. */
+  SHOCK_MOVE_MULT: 2,
+  /** §2.5 v0.5.2: skill cooldowns (Shock Pulse, Buddy Drone, Dash) count from the PRESS
+   *  (cast start), not from the end of the wind-up. Only 'press' is implemented. */
+  SKILL_COOLDOWN_FROM: 'press' as const,
+  /** §2.5 v0.5.2: on 'skillFailed' (Dash moved 0 cells, no cell for the drone) the cooldown is
+   *  NOT spent. */
+  SKILL_FAIL_REFUND: true,
   // §2.5 sk3 Buddy Drone
   SK3_DRONE_HP: 40,
   SK3_DRONE_DMG_MIN: 5,
@@ -72,9 +79,10 @@ export const COMBAT_EXTRAS = {
   SK3_DRONE_COOLDOWN_MS: 18000,
   /** §2.10 DRONE_FIELD_RADIUS: distance map around the drone, computed once at placement. */
   DRONE_FIELD_RADIUS: 6,
-  /** ROBOCZE (not in spec): an idle enemy that detects the player wakes idle enemies of the same
-   *  type within this radius that see it (Scrapper groups 2–4, Panel Drone pairs). 0 = off. */
-  ENEMY_GROUP_ALERT_RADIUS: 4,
+  /** §2.10 v0.5.2: an idle enemy that detects the player wakes idle enemies of the SAME GROUP
+   *  (SCRAPPER_GROUP, drone pair – `group` at spawn) within this Chebyshev radius that see it.
+   *  No chain: a woken enemy does not wake others. 0 = off. */
+  ENEMY_GROUP_WAKE_RADIUS: 4,
   /** §2.4 v0.5: contract enemies drop no loot (0 Scrap, 0 items, 0 kr). Combat only flags them
    *  ('contract' on EnemyCombat / enemyKilled); loot is rolled by LUZ. */
   CONTRACT_ENEMY_LOOT: 0,
@@ -132,15 +140,20 @@ export interface EnemyTypeDef {
   cooldownMs: number;
   /** 0 = static (turret). */
   moveMs: number;
-  moveDiagMs: number;
   detectRadius: number;
   atkRange: number;
   /** 'ranged': hitscan at the frozen cell, needs line of sight, uses the ranged token. */
   attack: 'melee' | 'ranged';
   /** Boss: depth multipliers do not apply (§2.11). */
   ignoresDepth: boolean;
-  /** ENEMY_GROUP_ALERT_RADIUS applies (groups / pairs). */
-  groupAlert: boolean;
+}
+
+/**
+ * §1.14 / §2.11 v0.5.2: an enemy diagonal step = 1.5 × its straight step, rounded UP to a whole
+ * tick (h 250 → 400, s/d 200 → 300, boss 300 → 450). The only place diagonals are derived.
+ */
+export function enemyDiagMs(moveMs: number, tickMs: number): number {
+  return Math.ceil((moveMs * 1.5) / tickMs - 1e-9) * tickMs;
 }
 
 export const ENEMY_TYPES = {
@@ -152,15 +165,13 @@ export const ENEMY_TYPES = {
     windupMs: M0.ENEMY_ATK_WINDUP_MS,
     cooldownMs: M0.ENEMY_ATK_COOLDOWN_MS,
     moveMs: M0.ENEMY_MOVE_MS,
-    moveDiagMs: M0.ENEMY_MOVE_DIAG_MS,
     detectRadius: M0.ENEMY_DETECT_RADIUS,
     atkRange: M0.ENEMY_ATK_RANGE,
     attack: 'melee',
     ignoresDepth: false,
-    groupAlert: false,
   },
   /** `d` M1_ENEMY_01 Panel Drone – fast melee, pairs. HP/dmg/cd/move [P]; wind-up 450 [GD
-   *  "wind-up − 1 tick ≥ 400 ms", was 400]; diagonal 300 [GD]. */
+   *  "wind-up − 1 tick ≥ 400 ms", was 400]; diagonal = enemyDiagMs (300). */
   panelDrone: {
     hp: 40,
     dmgMin: 8,
@@ -168,14 +179,12 @@ export const ENEMY_TYPES = {
     windupMs: 450,
     cooldownMs: 600,
     moveMs: 200,
-    moveDiagMs: 300,
     detectRadius: 8,
     atkRange: 1,
     attack: 'melee',
     ignoresDepth: false,
-    groupAlert: true,
   },
-  /** `h` M1_ENEMY_02 Curfew Guard – heavy melee [P]; diagonal 400 [R] (×1.6, tick grid). */
+  /** `h` M1_ENEMY_02 Curfew Guard – heavy melee [P]; diagonal = enemyDiagMs (400) [P v0.5.2]. */
   curfewGuard: {
     hp: 120,
     dmgMin: 14,
@@ -183,15 +192,13 @@ export const ENEMY_TYPES = {
     windupMs: 600,
     cooldownMs: 900,
     moveMs: 250,
-    moveDiagMs: 400,
     detectRadius: 7,
     atkRange: 1,
     attack: 'melee',
     ignoresDepth: false,
-    groupAlert: false,
   },
   /** `s` M1_ENEMY_03 Scrapper – weak, groups 2–4, takes NO loot in M1 (§2.8) [P]; wind-up 450
-   *  [GD, was 400]; diagonal 300 [R]. */
+   *  [GD, was 400]; diagonal = enemyDiagMs (300) [P v0.5.2]. */
   scrapper: {
     hp: 30,
     dmgMin: 4,
@@ -199,12 +206,10 @@ export const ENEMY_TYPES = {
     windupMs: 450,
     cooldownMs: 600,
     moveMs: 200,
-    moveDiagMs: 300,
     detectRadius: 7,
     atkRange: 1,
     attack: 'melee',
     ignoresDepth: false,
-    groupAlert: true,
   },
   /** `t` M1_ENEMY_04 Line Sentry – static turret, range 6 + LOS, shoots the frozen cell [P]. */
   lineSentry: {
@@ -214,12 +219,10 @@ export const ENEMY_TYPES = {
     windupMs: 700,
     cooldownMs: 1500,
     moveMs: 0,
-    moveDiagMs: 0,
     detectRadius: 7,
     atkRange: 6,
     attack: 'ranged',
     ignoresDepth: false,
-    groupAlert: false,
   },
 } satisfies Record<string, EnemyTypeDef>;
 export type EnemyTypeId = keyof typeof ENEMY_TYPES;
@@ -274,8 +277,8 @@ export const COMBAT_STRINGS = {
   kill: '+1 kill',
 } as const;
 
-// ---- Boss Rail Guardian (§2.11 v0.5, §2.16; balans-m1.md). DATA ONLY – not implemented yet. ---
-/** Values kept in data for Balans steering; the boss AI is the next PROG / Gameplay round. */
+// ---- Boss Rail Guardian (§2.11 v0.5, §2.16; balans-m1.md v1.1) – combat/boss.ts -------------
+/** All boss numbers. Diagonal step = enemyDiagMs(BOSS_MOVE_MS). */
 export const RAIL_GUARDIAN = {
   /** 3×2 body; M1_BOSS_01. */
   BOSS_W: 3,
@@ -291,9 +294,11 @@ export const RAIL_GUARDIAN = {
   BOSS_CHARGE_EVERY: 4,
   BOSS_CHARGE_WINDUP_MS: 900,
   BOSS_CHARGE_TICKS_PER_CELL: 2,
-  /** Charge lane width: 2 cells (horizontal charge), 3 (vertical); player hit once. */
+  /** GD (level-m1 §10): the charge is ALWAYS horizontal along a 2-row track `=` (lane = 2 rows
+   *  = BOSS_H). When a charge is due the boss first walks to the nearest track; the 900 ms
+   *  wind-up (whole track lit) starts when it stands on it. Player hit once. */
   BOSS_CHARGE_LANE_H: 2,
-  BOSS_CHARGE_LANE_V: 3,
+  BOSS_TRACK_TILE: '=',
   BOSS_STUN_MS: 2000,
   BOSS_WEAKPOINT_MULT: 2,
   BOSS_SUMMON_HP_PCT: 50,
@@ -308,4 +313,7 @@ export const RAIL_GUARDIAN = {
   SUMMON_ACTIVATE_MS: 500,
   SUMMON_ALERT_MS: 300,
   BOSS_MELEE_TOKENS: 1,
+  /** [R] wake-up: player within this Chebyshev radius with LOS (arena ~28×14 → whole arena). */
+  BOSS_DETECT_RADIUS: 14,
+  BOSS_ARMOR: 0,
 } as const;

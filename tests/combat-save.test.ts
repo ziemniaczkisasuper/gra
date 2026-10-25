@@ -162,7 +162,7 @@ describe('combat save (save v3 section "combat")', () => {
   it('a save made before combat started loads as a new game (lazy init)', () => {
     const a = createGame({ mapRows: ROWS, seed: 7 });
     const data = snapshot(a, 0);
-    expect(data.combat).toEqual({ v: 2, empty: true });
+    expect(data.combat).toEqual({ v: 3, empty: true });
     const b = gameFromSave(parseSaveText(saveToJson(data)), { mapRows: ROWS });
     expect(peekCombat(b)).toBeUndefined();
     expect(getCombat(b).enemies.size).toBe(1);

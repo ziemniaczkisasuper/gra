@@ -75,6 +75,14 @@ export interface EnemyCombat {
   shock: number;
   /** §2.4 contract enemy (spawned for a contract): no loot (CONTRACT_ENEMY_LOOT), LUZ reads it. */
   contract: boolean;
+  /** §2.10 v0.5.2 spawn group (SCRAPPER_GROUP, drone pair); null = no group wake-up. */
+  group: number | null;
+  /** §2.5 Shock step accumulator carry (steps started under Shock ×2). */
+  moveCarry: number;
+  /** Fixed depth for stats (boss summons: depth 3); null = the zone depth. */
+  depth: number | null;
+  /** §2.11 boss summon: no loot, removed when the boss fight resets. */
+  summoned: boolean;
 }
 
 /** §2.5 sk3 Buddy Drone (one at a time). */
@@ -101,7 +109,8 @@ export interface FloatText {
 
 /** S12 (FX / death screen M1_DEATH_01/02): one enemy blow that hurt the player. */
 export interface PlayerHitInfo {
-  enemyType: EnemyTypeId;
+  /** 'railGuardian' = the boss (enemyIndex −1). */
+  enemyType: EnemyTypeId | typeof BOSS_TYPE;
   /** Index of the attacker in AI order (= CombatSave enemies index; ids are not stable). */
   enemyIndex: number;
   /** Cell the blow came FROM (attacker's cell at resolution). */
@@ -110,6 +119,65 @@ export interface PlayerHitInfo {
   aim: Cell;
   dmg: number;
   tick: number;
+}
+
+/** §2.11 / §2.16 boss Rail Guardian id (death cause, events). */
+export const BOSS_TYPE = 'railGuardian';
+
+export type BossPhase =
+  | 'idle'
+  | 'chase'
+  | 'swing'
+  | 'recover'
+  | 'toTrack'
+  | 'chargeWindup'
+  | 'charging'
+  | 'stunned'
+  | 'summon'
+  | 'dead';
+
+/** Boss charge in progress (frozen at the wind-up start). */
+export interface BossCharge {
+  dir: Cell;
+  /** Wind-up: the whole 2-row track; ride: cells not yet entered by the body, nearest first. */
+  lane: Cell[];
+  /** The player was already hit by this charge (hit once). */
+  hit: boolean;
+  /** Ticks to the next cell (BOSS_CHARGE_TICKS_PER_CELL). */
+  stepTimer: number;
+}
+
+/** §2.11 boss state. The body = BOSS_W × BOSS_H solid part entities, anchor = top-left. */
+export interface BossState {
+  /** Part entity ids, row-major (row × BOSS_W + col). Not saved – recreated on load. */
+  partIds: number[];
+  x: number;
+  y: number;
+  spawn: Cell;
+  hp: number;
+  maxHp: number;
+  phase: BossPhase;
+  /** Ticks left in the current phase (swing / recover / windup / stun / summon). */
+  timer: number;
+  moveCooldown: number;
+  /** Cardinal direction of the last attack. */
+  facing: Cell;
+  /** Attacks since the last charge; at BOSS_CHARGE_EVERY − 1 the next attack is a charge. */
+  sinceCharge: number;
+  /** Anchor row of the track the boss walks to (phase 'toTrack'). */
+  trackY: number | null;
+  /** Arena interior rectangle (leaving it → resetBossArena). */
+  arena: { x0: number; y0: number; x1: number; y1: number };
+  /** The player left the arena (boss reset); re-entering emits bossArenaReenter. */
+  playerLeft: boolean;
+  /** bossIntro already emitted for this engagement. */
+  introDone: boolean;
+  /** Frozen 3×3 swing zone while phase = 'swing'. */
+  swing: Cell[] | null;
+  charge: BossCharge | null;
+  /** The one-time 50 % summon already happened. */
+  summoned: boolean;
+  hitFlash: number;
 }
 
 /** S12: who killed the player; kept from death until respawn (saved). */
@@ -136,7 +204,7 @@ export type CombatEvent =
   | { type: 'playerDied'; cause?: DeathCause }
   | { type: 'playerRespawned' }
   | { type: 'skillUsed'; skill: SkillId; slot: number }
-  | { type: 'skillFailed'; skill: SkillId; reason: 'noCell' }
+  | { type: 'skillFailed'; skill: SkillId; reason: 'noCell' | 'blocked' }
   | { type: 'dash'; from: Cell; to: Cell; path: Cell[] }
   | { type: 'shockPulse'; center: Cell; radius: number }
   | { type: 'telegraphInterrupted'; enemyId: number }
@@ -145,7 +213,22 @@ export type CombatEvent =
   | { type: 'droneHit'; dmg: number; enemyId: number }
   | { type: 'droneGone'; reason: 'expired' | 'destroyed' | 'playerDied' }
   /** §1.11 trigger D. The loop owner (main.ts) performs the pause. */
-  | { type: 'autoPauseRequest'; reason: 'hitWhileAway' };
+  | { type: 'autoPauseRequest'; reason: 'hitWhileAway' }
+  /** §2.11 boss Rail Guardian. */
+  | {
+      type: 'bossHit';
+      dmg: number;
+      crit: boolean;
+      weakPoint: boolean;
+      source: 'attack' | 'pulse' | 'drone';
+    }
+  | { type: 'bossAttack'; attack: 'swing' | 'charge' }
+  | { type: 'bossStunned' }
+  | { type: 'bossSummon'; cells: Cell[] }
+  | { type: 'bossKilled' }
+  /** §2.11: back in the arena after leaving it – UI shows M1_RISK_01B (combat shows nothing). */
+  | { type: 'bossArenaReenter'; textId: 'M1_RISK_01B' }
+  | { type: 'bossReset' };
 
 export interface CombatData {
   cfg: CombatConfig;
@@ -178,4 +261,8 @@ export interface CombatData {
   fxIds: Set<number>;
   /** Timed fx entities (strike, dash trail): entity id → ticks left. */
   strikes: Map<number, number>;
+  /** §2.11 boss Rail Guardian (null = no boss on the level). */
+  boss: BossState | null;
+  /** Tick being simulated (for bus events; not saved). */
+  tick: number;
 }

@@ -137,7 +137,7 @@ describe('data (v0.5 §1.14, §2.11, §2.16)', () => {
     expect(ENEMY_TYPES.lineSentry.windupMs).toBe(700);
     expect(enemyTicks(getCombat(room()), 'panelDrone').moveDiag).toBe(6);
   });
-  it('boss values live in data (not implemented yet); boss wind-ups obey the rule', () => {
+  it('boss values live in data; boss wind-ups obey the rule; no boss → no charge lane', () => {
     expect(RAIL_GUARDIAN.BOSS_HP).toBe(2400);
     expect([RAIL_GUARDIAN.BOSS_DMG_MIN, RAIL_GUARDIAN.BOSS_DMG_MAX]).toEqual([20, 32]);
     expect(RAIL_GUARDIAN.BOSS_SWING_WINDUP_MS).toBe(800);
@@ -159,13 +159,18 @@ describe('data (v0.5 §1.14, §2.11, §2.16)', () => {
 
 // ---- damage order (§2.11, Mechanika) -------------------------------------------------------
 
-describe('damage order: roll → crit ×1.5 (floor) → ×depth (round) → armour (floor, min 1)', () => {
-  it('crit before depth before armour', () => {
-    // 10 → 15 → round(22.5) = 23 → floor(23 × 100/121) = 19 (depth-first would give 18)
+describe('damage order v0.5.2: roll → crit ×1.5 → Momentum → ×depth → ONE round → armour', () => {
+  it('crit before depth before armour, one round after depth', () => {
+    // 10 → 15 → 22.5 → round 23 → floor(23 × 100/121) = 19
     expect(computeDamage(10, { crit: true, depthMult: 1.5, armor: 21 }, COMBAT_M1)).toBe(19);
     expect(computeDamage(10, { crit: true, depthMult: 1.5 }, COMBAT_M1)).toBe(23);
     expect(computeDamage(10, { crit: true, depthMult: 1.5, armor: 1e6 }, COMBAT_M1)).toBe(9); // cap 60 %
     expect(computeDamage(1, { armor: 100 }, COMBAT_M1)).toBe(1); // min 1
+    // No separate floor on crit: 9 → 13.5 → round 14 (old floor order gave 13).
+    expect(computeDamage(9, { crit: true }, COMBAT_M1)).toBe(14);
+    // Crit + Momentum (player blow, depth ×1.0): 10 × 1.5 × 1.5 = 22.5 → 23.
+    expect(computeDamage(10, { crit: true, momentum: true }, COMBAT_M1)).toBe(23);
+    expect(computeDamage(11, { crit: true, momentum: true, depthMult: 1 }, COMBAT_M1)).toBe(25);
   });
 });
 
@@ -245,8 +250,8 @@ describe('M1 enemies (§2.11)', () => {
       [6, 2, '#'],
       [6, 3, '#'],
     ]);
-    const a = spawnEnemy(s, 'scrapper', { x: 7, y: 4 });
-    const b = spawnEnemy(s, 'scrapper', { x: 7, y: 2 });
+    const a = spawnEnemy(s, 'scrapper', { x: 7, y: 4 }, { group: 1 });
+    const b = spawnEnemy(s, 'scrapper', { x: 7, y: 2 }, { group: 1 });
     let guard = 0;
     while (ec(s, a).ai === 'idle' && guard++ < 100) run(s, 1);
     expect(ec(s, a).ai).not.toBe('idle');
@@ -326,12 +331,14 @@ describe('sk1 Dash', () => {
     run(w, 1, { skill: 1, move: [1, 0] });
     expect([w.player.x, w.player.y]).toEqual([4, 4]);
   });
-  it('i-frames 200 ms: a blow landing right after the dash misses (playerDodged)', () => {
-    const s = room([[4, 4, '#']]); // dash east goes nowhere – only the i-frames matter
+  it('i-frames 200 ms: a blow landing during them misses (playerDodged)', () => {
+    const s = room();
     const e = spawnEnemy(s, 'scrapper', { x: 2, y: 4 });
     let guard = 0;
     while (!(ec(s, e).attack && e.attackWindup <= 3) && guard++ < 200) run(s, 1);
-    const ev = run(s, 1, { skill: 1, move: [1, 0] }).concat(run(s, 5));
+    // v0.5.2: a Dash into a wall fails, so the i-frames are set as a Dash would set them.
+    getCombat(s).player.iframes = getCombat(s).t.dashIframes;
+    const ev = run(s, 5);
     expect(of(ev, 'playerDodged').length).toBe(1);
     expect(of(ev, 'playerHit').length).toBe(0);
   });
@@ -633,9 +640,9 @@ describe('CombatSave v2', () => {
     for (const k of ['drone', 'tokenTick', 'recentHits', 'deathCause']) delete c[k];
     for (const k of ['slots', 'skillCd', 'cast', 'skillQueue', 'prevSkill', 'iframes', 'momentum'])
       delete c.player[k];
+    delete c.boss;
     for (const e of c.enemies) {
-      delete e.shock;
-      delete e.contract;
+      for (const k of ['shock', 'contract', 'group', 'moveCarry', 'depth', 'summoned']) delete e[k];
       if (e.attack) delete e.attack.target;
     }
     const b = gameFromSave(parseSaveText(JSON.stringify(data)), { mapRows: ROWS });
@@ -643,7 +650,7 @@ describe('CombatSave v2', () => {
     expect(cb.player.hp).toBe(getCombat(a).player.hp);
     expect(cb.drone).toBeNull();
     expect(cb.player.skillCd).toEqual({ dash: 0, shockPulse: 0, buddyDrone: 0 });
-    expect((snapshot(b, 1).combat as { v: number }).v).toBe(2);
+    expect((snapshot(b, 1).combat as { v: number }).v).toBe(3); // v1 → v2 → v3
   });
   it('contract enemies are flagged in enemyKilled', () => {
     const s = room();

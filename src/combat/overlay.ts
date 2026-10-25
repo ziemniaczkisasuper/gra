@@ -64,6 +64,15 @@ export function renderCombatOverlay(
       ec.attack ? COMBAT_STYLE.text.telegraph : COMBAT_STYLE.text.alert,
     );
   }
+  // §2.11 boss: yellow '!' over the middle top part during swing / charge wind-up (not summon).
+  const b = c.boss;
+  if (b && (b.phase === 'swing' || b.phase === 'chargeWindup')) {
+    const top = state.entities.find((e) => e.id === b.partIds[1]);
+    if (top) {
+      const v = visualPos(top, state.tick, alpha);
+      label(ENEMY_SIGNALS.telegraphMark.glyph, cx(v.x), cy(v.y), COMBAT_STYLE.text.telegraph);
+    }
+  }
   // Floating texts: rise ~0.8 cell over FLOAT_TEXT_MS.
   for (const f of c.floats) {
     const prog = 1 - (f.ttl - alpha) / f.maxTtl;
