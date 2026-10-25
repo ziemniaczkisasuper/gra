@@ -26,7 +26,7 @@ describe('QA-M0-009: opposite keys never stop the player', () => {
     k.tick((t) => (t.down('KeyA'), t.down('KeyD')));
     expect(k.g.player.x).toBe(x + 1);
     const v = keyGame();
-    v.tick((t) => (t.down('ArrowDown'), t.down('KeyW')));
+    v.tick((t) => (t.down('KeyS'), t.down('KeyW')));
     expect(v.g.player.y).toBe(y - 1);
   });
 

@@ -4,7 +4,7 @@ import { createGame } from '../src/core/game';
 import { resetCameraInsets } from '../src/render/camera';
 import type { GlyphRenderer } from '../src/render/glyph-renderer';
 import { renderScene } from '../src/render/scene';
-import { cellToScreen, getViewRect, setCanvasOrigin } from '../src/render/screen';
+import { cellToScreen, getViewRect, screenToCell, setCanvasOrigin } from '../src/render/screen';
 
 function fakeRenderer(dpr: number) {
   const draws: { ch: string; x: number; y: number }[] = [];
@@ -52,5 +52,20 @@ describe('cellToScreen', () => {
     const b = cellToScreen(3, 3);
     setCanvasOrigin(0, 0);
     expect({ dx: b.x - a.x, dy: b.y - a.y }).toEqual({ dx: 5, dy: 7 });
+  });
+
+  it('screenToCell is the inverse (cell centre → same cell), null outside the canvas', () => {
+    const s = createGame();
+    renderScene(fakeRenderer(2).r, s, 0);
+    for (const [x, y] of [
+      [3, 3],
+      [s.player.x, s.player.y],
+      [10, 7],
+    ] as const) {
+      const q = cellToScreen(x, y);
+      expect(screenToCell(q.x + q.w / 2, q.y + q.h / 2)).toEqual({ x, y });
+    }
+    expect(screenToCell(-1, 5)).toBeNull();
+    expect(screenToCell(5, 31 * 20 + 1)).toBeNull();
   });
 });

@@ -2,18 +2,20 @@ import { M0 } from '../data/mechanics-m0';
 import type { ActionState, ButtonAction, InputSource } from './actions';
 
 type DirKey = 'up' | 'down' | 'left' | 'right';
-export type KeyBinding = ButtonAction | DirKey;
+type AimKey = 'aimUp' | 'aimDown' | 'aimLeft' | 'aimRight';
+export type KeyBinding = ButtonAction | DirKey | AimKey;
 
 /** Default bindings by KeyboardEvent.code (physical key – works with any layout). */
 export const DEFAULT_BINDINGS: Readonly<Record<string, KeyBinding>> = {
   KeyW: 'up',
-  ArrowUp: 'up',
   KeyS: 'down',
-  ArrowDown: 'down',
   KeyA: 'left',
-  ArrowLeft: 'left',
   KeyD: 'right',
-  ArrowRight: 'right',
+  // Twin-stick aim (arrows were movement until M1: movement stays on WASD only).
+  ArrowUp: 'aimUp',
+  ArrowDown: 'aimDown',
+  ArrowLeft: 'aimLeft',
+  ArrowRight: 'aimRight',
   Space: 'attack',
   KeyJ: 'attack',
   Digit1: 'skill1',
@@ -143,6 +145,12 @@ export class KeyboardSource implements InputSource {
 
     out.move = { x, y };
     if (x !== 0 || y !== 0) out.digitalMove = true;
+    const ax = this.axis('aimLeft', 'aimRight');
+    const ay = this.axis('aimUp', 'aimDown');
+    if (ax !== 0 || ay !== 0) {
+      out.aim = { x: ax, y: ay };
+      out.digitalAim = true;
+    }
     this.latched.clear();
     return out;
   }
@@ -151,7 +159,7 @@ export class KeyboardSource implements InputSource {
    * mechaniki §1.2 v0.5 (QA-M0-009): opposite keys on one axis never cancel – the most recently
    * pressed one wins; when it is released the still-held one applies again.
    */
-  private axis(neg: DirKey, pos: DirKey): -1 | 0 | 1 {
+  private axis(neg: DirKey | AimKey, pos: DirKey | AimKey): -1 | 0 | 1 {
     let best: -1 | 0 | 1 = 0;
     let bestSeq = -1;
     for (const code of [...this.held, ...this.latched]) {

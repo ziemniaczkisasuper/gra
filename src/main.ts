@@ -6,6 +6,7 @@ import { DEFAULT_MAP, MAPS, type MapId } from './data/maps';
 import { M0 } from './data/mechanics-m0';
 import { STRINGS } from './data/strings';
 import { FONT, PALETTE } from './data/style';
+import { aimStick, MouseAimSource } from './input/aim';
 import { InputManager } from './input/actions';
 import { KeyboardSource } from './input/keyboard';
 import { TouchSource } from './input/touch';
@@ -17,6 +18,7 @@ import {
   setDefaultCameraInsets,
 } from './render/camera';
 import { GlyphRenderer } from './render/glyph-renderer';
+import { screenToCell } from './render/screen';
 import { renderScene } from './render/scene';
 import {
   getCombatHud,
@@ -106,6 +108,9 @@ const keyboard = new KeyboardSource(window, undefined, undefined, window); // bl
 input.add(keyboard);
 const touch = new TouchSource();
 input.add(touch);
+// Twin-stick aim: arrows (keyboard.ts) > mouse over the canvas > second touch stick (UI).
+input.add(new MouseAimSource(document.documentElement, screenToCell, () => state.player));
+input.add(aimStick);
 
 const renderer = new GlyphRenderer(canvas, PALETTE.background, FONT.family, FONT.lineHeight);
 

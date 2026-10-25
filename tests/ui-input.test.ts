@@ -163,7 +163,7 @@ describe('KeyboardSource (UI i Menu)', () => {
 
   it('v0.5: a single key moves in the first poll', () => {
     const { t, m } = kb();
-    t.down('ArrowLeft');
+    t.down('KeyA');
     expect(toDir8(m.sample().move)).toEqual({ x: -1, y: 0 });
   });
 

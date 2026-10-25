@@ -58,6 +58,23 @@ export function cellToScreen(x: number, y: number): ScreenRect {
   };
 }
 
+/**
+ * Inverse of cellToScreen: viewport CSS px → map cell under that point in the last frame, or
+ * null outside the canvas. (Cells outside the map are returned as they are – callers check.)
+ */
+export function screenToCell(px: number, py: number): { x: number; y: number } | null {
+  const d = frame.dpr;
+  const lx = px - frame.originX;
+  const ly = py - frame.originY;
+  const wCss = (frame.cols * frame.cellW) / d;
+  const hCss = (frame.rows * frame.cellH) / d;
+  if (lx < 0 || ly < 0 || lx >= wCss || ly >= hCss) return null;
+  return {
+    x: Math.floor((lx * d + frame.camPxX) / frame.cellW),
+    y: Math.floor((ly * d + frame.camPxY) / frame.cellH),
+  };
+}
+
 /** Visible map area of the last frame in cells (ui-m1 §11.6 arrow to the shaft). */
 export function getViewRect(): { x: number; y: number; w: number; h: number } {
   return {
