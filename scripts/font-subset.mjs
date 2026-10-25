@@ -26,7 +26,7 @@ const FACES = [
 
 /**
  * Always included even if no source file uses them yet: every non-ASCII character of
- * graf/styl-ascii.md (v1.2, approved) and graf/assety-m1.md, minus Polish letters and Polish
+ * graf/styl-ascii.md (v1.2, approved) and graf/assety-m1.md (v1.3), minus Polish letters and Polish
  * quotes „ ” from the prose. × → ≠ appear in prose only – kept "when in doubt".
  * ♥ U+2665 is NOT here: it is not in JetBrains Mono (GRAF dropped it, styl-ascii.md §Med-Patch).
  */
@@ -49,6 +49,30 @@ const EXTRA_CHARS = [
   '\u2593', // ▓
   '\u25A0', // ■
   '\u25C6', // ◆
+  // assety-m1.md v1.3 §15 pkt 3 (GRAF): arrows, box drawing, symbols (+ − ∩ ≥ from the docs)
+  '\u2190', // ←
+  '\u2191', // ↑
+  '\u2193', // ↓
+  '\u2196', // ↖
+  '\u2197', // ↗
+  '\u2198', // ↘
+  '\u2199', // ↙
+  '\u2212', // −
+  '\u2229', // ∩
+  '\u2264', // ≤
+  '\u2265', // ≥
+  '\u22A5', // ⊥
+  '\u2500', // ─
+  '\u2502', // │
+  '\u250C', // ┌
+  '\u2510', // ┐
+  '\u2514', // └
+  '\u2518', // ┘
+  '\u251C', // ├
+  '\u2524', // ┤
+  '\u252C', // ┬
+  '\u2534', // ┴
+  '\u253C', // ┼
 ];
 
 /**
