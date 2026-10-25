@@ -1,66 +1,133 @@
-// Visual effects (FX) – data format only. Source of effects: graf/assety-m1.md (GRAF / Assety i
-// Animacja) – NOT delivered yet, so this file defines types and the frame format, no effects.
-// Style source: graf/styl-ascii.md v1.1 (PROPOZYCJA, not approved by the Game Director).
-// Colours ONLY as PaletteKey from data/style.ts (no hex here). Renderer hook: PROG / Silnik.
+// Visual effects (FX) – types + registry. Data: src/data/fx-m1.ts, GENERATED from
+// graf/assety-m1.md v1.0 (GRAF / Assety i Animacja, schema "graf-fx/1") by
+// `node scripts/fx-import.mjs` – do not edit fx-m1.ts by hand, re-run the script.
+// Style source: graf/styl-ascii.md v1.3 (ZATWIERDZONY by the Game Director).
+// Colours ONLY as PaletteKey from data/style.ts (the importer maps every document hex to a key).
+// All FX are purely visual: game logic never waits for an animation. Renderer hook: PROG / Silnik.
 //
-// ---- Frame format ------------------------------------------------------------------------------
-// An effect is a list of frames. Each frame is a GlyphStyle-like cell with palette keys:
-//   { ch: '*', fg: 'playerShot', bg?: 'evacBg', bold?: true }
-// - `ch` = exactly one code point, 1 cell wide, present in the font subset (same rule as style.ts).
-// - `ch: null` = "draw the underlying cell unchanged" (gap frame for blinking / flashes);
-//   `fg`/`bg` with `ch: null` recolour the underlying glyph (e.g. white hit flash, halo blink).
-// - Duration: `frameMs` (all frames) or per-frame `ms`. Authored in ms (like mechanics data) and
-//   converted by the renderer hook:
-//     clock 'tick'   → msToTicks(ms) (50 ms TICK_MS, data/mechanics-m0.ts) – logic-synced FX
-//                      (telegraph blink, strike marker), deterministic, pauses with the game;
-//     clock 'render' → real-time ms in the rAF render loop – cosmetic FX (pulse, liquid,
-//                      Noise glitch); still frozen while paused.
-//   Durations should be multiples of 50 ms so both clocks agree.
-// - `mode`: 'once' = play frames once, then the effect ends (removed); 'loop' = repeat until the
-//   owner removes it; `loopDelayMs` = idle gap between loops (e.g. rarity-3 flash every 1500 ms).
-// - `reduceMotion`: what to do when the "Reduce motion" setting is on (GRAF §6):
-//   'skip' = don't play; 'static' = show `staticFrame` (or frame 0) instead of animating.
-// - `anchor`: 'cell' = on the target cell; 'over' = overlay above the target (e.g. '!');
-//   cells in `offsets` (dx, dy) for multi-cell effects (boss charge line, 3×3 swing).
+// ---- Frame format (graf-fx/1, assety-m1.md §0) --------------------------------------------------
+// - A TRACK = { layer, priority, anchor, frames, loop?, hold?, durationMs?, reduceMotion? }.
+//   An effect is one track (top-level fields), or several: `parts` (play together, optional
+//   `startMs`), `states` (state machine of one object: drone, evac shaft, boss), `timelines`
+//   (frame lists picked by a key, e.g. wind-up length) or `variants` (alternative frame lists).
+// - A FRAME = { ms, cells?: FxCell[] } for cell layers; overlay frames carry `text` (+ fg/bold),
+//   screen frames carry `dim` (+ `lines` of text ids). `ms`: positive multiple of 50 ms (1 tick),
+//   or 'durationMs' (= the effect's duration) / 'untilNextState' (state-machine hold).
+// - A CELL = GlyphStyle with palette keys + offset: { dx, dy, ch?, fg?, bg?, bold? }.
+//   OMITTED field = INHERITED from what lies underneath (terrain → item → entity → earlier FX),
+//   e.g. a cell with only `bg` recolours the background and keeps the glyph.
+//   `ch` is one 1-cell glyph from the font subset, or a placeholder:
+//     '{glyph}'          – the entity's own glyph (d, h, s, t, c …), for when the entity is gone;
+//     '{random:<chars>}' – one random char of <chars> per frame (game PRNG; Noise glitch).
+// - Timing: authored in ms; tick-synced effects use msToTicks(ms) (TICK_MS 50, data/mechanics-m0.ts),
+//   cosmetic ones may run on rAF real time. Both stop while paused.
+// - `loop: true` repeats the frames until durationMs / endsOn; `hold: true` = a single frame for the
+//   whole duration. `durationMs` may be a mechanics parameter name ('attackWindupMs',
+//   'SK3_DRONE_LIFE_MS', 'EVAC_ARRIVE_MS[depth]', 'untilNextState').
+// - Layers (draw order) and priorities (higher wins inside a layer): FX_COMMON.layers / .priorities.
+// - reduceMotion (GRAF §6): 'same' | 'skip' | own frame list | per-part map of those.
+// Unknown/metadata fields (note, params, trigger payloads, side effects …) are kept as-is
+// (`[extra: string]: unknown`) so nothing from the document is lost.
 import type { PaletteKey } from './style';
+import { FX_COMMON_DATA, FX_GLYPHS_M1_DATA, FX_M1_DATA, SCREEN_BASE_M1_DATA } from './fx-m1';
 
-/** One FX cell frame – GlyphStyle with palette keys instead of hex. */
-export interface FxFrame {
-  /** One glyph, or null = keep the underlying glyph (only recolour / gap). */
-  ch: string | null;
+export type FxLayer = 'terrain' | 'ground' | 'entity' | 'cell' | 'overlay' | 'screen';
+export type FxMs = number | 'durationMs' | 'untilNextState';
+
+/** One cell of a frame: GlyphStyle with palette keys + offset from the anchor. */
+export interface FxCell {
+  dx: number;
+  dy: number;
+  ch?: string;
   fg?: PaletteKey;
   bg?: PaletteKey;
   bold?: boolean;
-  /** Per-frame duration in ms (overrides FxDef.frameMs). */
-  ms?: number;
 }
 
-export type FxClock = 'tick' | 'render';
-export type FxMode = 'once' | 'loop';
-export type FxReduceMotion = 'skip' | 'static';
-export type FxAnchor = 'cell' | 'over';
-
-export interface FxDef {
-  frames: readonly FxFrame[];
-  /** Default frame duration in ms (multiple of 50). */
-  frameMs: number;
-  clock: FxClock;
-  mode: FxMode;
-  /** Loop only: idle gap between repetitions, ms. */
-  loopDelayMs?: number;
-  reduceMotion: FxReduceMotion;
-  /** Frame shown with reduceMotion 'static' (default: frames[0]). */
-  staticFrame?: FxFrame;
-  anchor: FxAnchor;
-  /** Extra cells relative to the anchor (default: [[0, 0]]). */
-  offsets?: readonly (readonly [number, number])[];
-  /** Short note: source row in graf/assety-m1.md. */
-  source?: string;
+export interface FxFrame {
+  ms: FxMs;
+  /** Cell layers. */
+  cells?: readonly FxCell[];
+  /** Overlay layer: text above the anchor (may contain {placeholders}). */
+  text?: string;
+  fg?: PaletteKey;
+  bold?: boolean;
+  /** Overlay: rise in rows during the frame (floating numbers). */
+  riseRows?: number;
+  /** Screen layer: dim the whole map. */
+  dim?: { color: PaletteKey; alpha: number };
+  /** Screen layer: text lines by text id. */
+  lines?: readonly { textId: string; fg: PaletteKey; bold?: boolean }[];
+  /** Cell to draw instead when the target cell is occupied (player / drone stays visible). */
+  ifOccupied?: FxCell;
+  readonly [extra: string]: unknown;
 }
 
-/**
- * Effect registry – EMPTY until graf/assety-m1.md arrives. Keys = effect ids from that document.
- * Usage: `export const FX = { strike: {...} } as const satisfies Record<string, FxDef>;`
- */
-export const FX = {} as const satisfies Record<string, FxDef>;
-export type FxId = keyof typeof FX;
+export type FxFrameList = readonly FxFrame[];
+export type FxReduceMotion = 'same' | 'skip' | FxFrameList;
+
+/** One playable track. */
+export interface FxTrack {
+  layer?: FxLayer;
+  priority?: number;
+  anchor?: string;
+  frames?: FxFrameList;
+  loop?: boolean;
+  hold?: boolean;
+  durationMs?: number | string;
+  startMs?: number;
+  trigger?: string | readonly string[];
+  endsOn?: readonly string[];
+  reduceMotion?: FxReduceMotion | Readonly<Record<string, FxReduceMotion>>;
+  readonly [extra: string]: unknown;
+}
+
+/** An effect: a single track and/or composite parts / states / timelines / variants. */
+export interface FxDef extends FxTrack {
+  id: string;
+  parts?: readonly (FxTrack & { name: string })[];
+  states?: Readonly<Record<string, FxTrack>>;
+  timelines?: Readonly<Record<string, FxFrameList>>;
+  variants?: Readonly<Record<string, FxFrameList>>;
+}
+
+/** fx_common: tick, layers, anchors, priorities and the document's colour names → PaletteKey. */
+export interface FxCommon {
+  id: 'fx_common';
+  schema: string;
+  tickMs: number;
+  /** Document colour name (assety-m1.md §1) → our PALETTE key (names differ, hex identical). */
+  palette: Readonly<Record<string, PaletteKey>>;
+  layers: readonly { name: FxLayer; order: number; note?: string }[];
+  anchors: Readonly<Record<string, string>>;
+  priorities: Readonly<Record<string, number>>;
+  reduceMotionRule: string;
+}
+
+export const FX_COMMON: FxCommon = FX_COMMON_DATA;
+/** glyphs_m1: base entity glyphs used by the effects (cells without dx/dy). */
+export const FX_GLYPHS_M1: Readonly<Record<string, unknown>> = FX_GLYPHS_M1_DATA;
+/** screen_base_m1: base screen layout (17×9 rows + legend) – UI / Level Design data. */
+export const SCREEN_BASE_M1: Readonly<Record<string, unknown>> = SCREEN_BASE_M1_DATA;
+
+/** Effect registry (graf/assety-m1.md v1.0). Keys = document ids. */
+export const FX: Readonly<Record<string, FxDef>> = FX_M1_DATA;
+export type FxId = keyof typeof FX_M1_DATA;
+
+/** Every track of an effect (top-level, parts, states, nested state tracks like tracer/overlay). */
+export function fxTracks(def: FxDef): { path: string; track: FxTrack }[] {
+  const out: { path: string; track: FxTrack }[] = [];
+  if (def.frames) out.push({ path: def.id, track: def });
+  for (const p of def.parts ?? []) out.push({ path: `${def.id}.parts.${p.name}`, track: p });
+  for (const [k, s] of Object.entries(def.states ?? {})) {
+    if (s.frames) out.push({ path: `${def.id}.states.${k}`, track: s });
+    for (const [nk, nv] of Object.entries(s))
+      if (nv && typeof nv === 'object' && 'frames' in nv)
+        out.push({ path: `${def.id}.states.${k}.${nk}`, track: nv as FxTrack });
+  }
+  for (const [k, f] of Object.entries(def.timelines ?? {}))
+    out.push({ path: `${def.id}.timelines.${k}`, track: { ...def, frames: f } });
+  for (const [k, f] of Object.entries(def.variants ?? {}))
+    out.push({ path: `${def.id}.variants.${k}`, track: { ...def, frames: f } });
+  return out;
+}

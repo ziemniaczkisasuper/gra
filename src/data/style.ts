@@ -1,6 +1,7 @@
 // ALL visual style in one place: colours, glyphs, font.
-// Source: /workspace/GRA/graf/styl-ascii.md v1.1 (25.10.2026, GRAF / Concept i Styl).
-// Status: PROPOZYCJA – NOT yet approved by the Game Director. Swap values here only;
+// Source: /workspace/GRA/graf/styl-ascii.md v1.3 (25.10.2026, GRAF / Concept i Styl; v1.2 = §10:
+// rarity names from Lore, enemy 'c' is M0-only; v1.3 = player drone named Buddy Drone).
+// Status: ZATWIERDZONY – approved by the Game Director (v1.2; v1.3 = drone name only). Swap values here only;
 // no other file hard-codes colours or glyphs.
 //
 // Rules (agreed with PROG / Silnik):
@@ -108,10 +109,11 @@ export const PLAYER_GLYPH: GlyphStyle = {
 /**
  * M0 training dummy. Map text uses the marker 'E'; on screen it is the Scrap Crawler
  * glyph 'c' (mechaniki-m1.md 1.13; GRAF: lowercase letters = enemies).
+ * GRAF v1.2 §10: 'c' exists ONLY in the M0 prototype; in M1 → `h` Curfew Guard.
  */
 export const DUMMY_GLYPH: GlyphStyle = { ch: 'c', fg: PALETTE.enemy, bold: true };
 /**
- * Telegraphing attack. v1.1 §9: NO uppercase letter (uppercase = elite/boss) – the enemy glyph is
+ * Telegraphing attack. v1.1 §9 / v1.2 §10: NO uppercase letter (uppercase = elite/boss) – the enemy glyph is
  * drawn in an inverted cell: bg enemy magenta, glyph background colour (the '!' overlay is the 2nd signal).
  */
 export const DUMMY_TELEGRAPH_GLYPH: GlyphStyle = {
@@ -223,7 +225,7 @@ export const UI_GLYPHS = {
 } as const;
 
 // =================================================================================================
-// ---- GRAF v1.1 data tables (LUZ / Pracownik 4). Colours as PaletteKey – resolve with glyph() /
+// ---- GRAF v1.1–v1.3 data tables (LUZ / Pracownik 4). Colours as PaletteKey – resolve with glyph() /
 // PALETTE[key]. Keys follow Gameplay code (src/data/combat-m0.ts ENEMY_TYPES) and, where the code
 // has nothing yet, design/mechaniki-m1.md v0.4 (§2.10–2.11) + fabula/teksty-m1-en.md.
 // =================================================================================================
@@ -245,7 +247,7 @@ export type Rarity = 1 | 2 | 3;
 export const RARITIES: readonly Rarity[] = [1, 2, 3];
 
 export interface RarityStyle {
-  /** Text id of the name (fabula/teksty-m1-en.md §M1_RARITY_*; EN working name in the comment). */
+  /** Text id of the name (fabula/teksty-m1-en.md M1_RARITY_*). */
   nameId: string;
   /** Glyph colour of loot on the ground. */
   color: PaletteKey;
@@ -261,9 +263,11 @@ export interface RarityStyle {
   /** Rarity 3: glyph briefly becomes `glyph` every `periodMs` (off with Reduce motion). */
   flash?: { glyph: string; periodMs: number };
 }
+  /** EN name (GRAF v1.2 §10 = Lore): Salvaged / Tuned / Grid-Grade (final). UI text should use nameId. */
+  name: string;
 
 export const LOOT_RARITY = {
-  /** M1_RARITY_1 "Salvaged" (GRAF working name: Scrap). */
+  /** M1_RARITY_1 Salvaged – grey, no background, no marker. */
   1: {
     nameId: 'M1_RARITY_1',
     color: 'rarity1',
@@ -272,7 +276,7 @@ export const LOOT_RARITY = {
     markerAscii: '',
     frame: 'none',
   },
-  /** M1_RARITY_2 "Tuned". */
+  /** M1_RARITY_2 Tuned – blue + background + '◆'. */
   2: {
     nameId: 'M1_RARITY_2',
     color: 'rarity2',
@@ -280,15 +284,17 @@ export const LOOT_RARITY = {
     carrierBg: 'rarity2Bg',
     marker: '◆',
     markerAscii: '+',
+    name: 'Salvaged',
     frame: 'single',
   },
-  /** M1_RARITY_3 "Grid-Grade" (GRAF working name: Prototype). Flash "co ~1,5 s". */
+  /** M1_RARITY_3 Grid-Grade – amber + background + flash every ~1.5 s + '◆◆'. */
   3: {
     nameId: 'M1_RARITY_3',
     color: 'rarity3',
     groundBg: 'rarity3Bg',
     carrierBg: 'rarity3Bg',
     marker: '◆◆',
+    name: 'Tuned',
     markerAscii: '++',
     frame: 'double',
     flash: { glyph: '*', periodMs: 1500 },
@@ -299,6 +305,7 @@ export const LOOT_RARITY = {
 /** Equipment slot (mechaniki-m1.md §2.10: broń / pancerz / moduł / narzędzie). Colour = rarity. */
 export type ItemSlot = 'weapon' | 'armor' | 'module' | 'tool';
 
+    name: 'Grid-Grade',
 export const ITEM_GLYPHS = {
   weapon: { glyph: '/' },
   armor: { glyph: '[' },
@@ -335,7 +342,12 @@ export interface EnemyGlyphDef extends GlyphDef {
 }
 
 export const ENEMY_GLYPHS = {
-  /** M0 Scrap Crawler (mechaniki §1.13 'c'; in M1 replaced by Curfew Guard). */
+  /**
+   * Scrap Crawler – M0 prototype ONLY (GRAF v1.2 §10). In M1 it is replaced by `h` Curfew Guard
+   * (M0 template, mechaniki-m1.md §2.11); the letter 'c' stays reserved for no other enemy.
+   * Magenta bold; wind-up as §9 (yellow '!', inverted cell, blinking 'x' target) – never 'C'.
+   * `elite: 'C'` only satisfies the shape: M0 has no elites, 'C' is never drawn.
+   */
   crawler: { glyph: 'c', color: 'enemy', bold: true, elite: 'C' },
   /** M1_ENEMY_01 Panel Drone – fast melee. */
   panelDrone: { glyph: 'd', color: 'enemy', bold: true, elite: 'D' },
@@ -392,18 +404,27 @@ export const ENEMY_SIGNALS = {
   targetCell: GlyphDef;
   projectile: GlyphDef;
   noiseGlitch: readonly string[];
+  /** Moment of the blow on the target cell, 100 ms (assety-m1 fx_strike, Z2): magenta '*'. */
+  strike: { glyph: '*', color: 'enemy', bg: 'telegraphBg', bold: true },
+  /** Line Sentry (ranged) target cell (assety-m1 fx_telegraph ranged, Z1): '•' on neutral bg. */
+  rangedTargetCell: { glyph: '•', color: 'enemy', bg: 'descentBg', bold: true },
+  /** Ranged blow marker (fx_strike variant "ranged"). */
+  rangedStrike: { glyph: '*', color: 'enemy', bg: 'descentBg', bold: true },
   carrierUnderline: string;
 };
 
 // ---- Player-side actors (§4, §9) ----------------------------------------------------------------
 export const ALLY_GLYPHS = {
-  /** Buddy Drone (GRAF: Salvage Drone) – same halo as the player; bg blinks 'enemy' on damage. */
+  /** Buddy Drone (final name, GRAF v1.3; glyph '¤') – same halo as the player; bg blinks 'enemy' on damage. */
   buddyDrone: { glyph: '¤', color: 'safe', bg: 'playerHalo', bold: true },
   /** Player shot. */
   playerShot: { glyph: '*', color: 'playerShot' },
 } as const satisfies Record<string, GlyphDef>;
 
 // ---- World: terrain, objects, base, sector map (§4). Semantic keys; map-text chars stay in
+  strike: GlyphDef;
+  rangedTargetCell: GlyphDef;
+  rangedStrike: GlyphDef;
 // TILE_GLYPHS (Level Design decides which of these get a map character). -------------------------
 export const WORLD_GLYPHS = {
   floor: { glyph: '.', color: 'floor' },
