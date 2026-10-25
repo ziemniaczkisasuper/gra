@@ -95,8 +95,7 @@ const saveApi = initSaveApi({
   download: downloadSaveFile,
 });
 
-// PROG / Gameplay: combat systems (combat/README.md); combat + boss events also go to the bus.
-installCombat((t, p) => (bus.emit as (t: string, p: unknown) => void)(t, p));
+installCombat(); // PROG / Gameplay: combat systems (combat/README.md)
 // LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
 installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
 // TODO(base, M1): after evacuation / death reprint call refillContractsAtBase(state, ctx, emit)
