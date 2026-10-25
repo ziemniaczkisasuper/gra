@@ -156,17 +156,23 @@ describe('FX parameter names (mechaniki-m1.md v0.5)', () => {
     expect([...unknown]).toEqual([]);
   });
 
-  it("FX params marked 'ok' / 'renamed' / 'fxOnly' have the spec value", async () => {
+  it("FX params marked 'ok' / 'renamed' / 'fxOnly' / 'gdDecisionSpecStale' have the documented value", async () => {
     const { FX_PARAMS } = await import('../src/data/fx-params');
     const bad: string[] = [];
     visit(FX, 'FX', (o, path) => {
       if (!o.params || typeof o.params !== 'object') return;
       for (const [p, v] of Object.entries(o.params as Record<string, unknown>)) {
         const def = (FX_PARAMS as Record<string, { value: unknown; status: string }>)[p];
+        if (typeof v === 'string' && def && 'allowed' in def) {
+          const allowed = (def as { allowed?: readonly string[] }).allowed ?? [];
+          if (!allowed.includes(v))
+            bad.push(`${path}.params.${p}: "${v}" not in ${allowed.join('|')}`);
+          continue;
+        }
         if (
           typeof v !== 'string' &&
           def &&
-          ['ok', 'renamed', 'fxOnly'].includes(def.status) &&
+          ['ok', 'renamed', 'fxOnly', 'gdDecisionSpecStale'].includes(def.status) &&
           JSON.stringify(v) !== JSON.stringify(def.value)
         )
           bad.push(`${path}.params.${p}: ${JSON.stringify(v)} ≠ ${JSON.stringify(def.value)}`);

@@ -1,5 +1,5 @@
-// Parameter names referenced by the FX data (src/data/fx-m1.ts ← graf/assety-m1.md v1.1) and their
-// values per design/mechaniki-m1.md v0.5 (25.10.2026). LUZ / Pracownik 4.
+// Parameter names referenced by the FX data (src/data/fx-m1.ts ← graf/assety-m1.md v1.2) and their
+// values per design/mechaniki-m1.md v0.5.2 (25.10.2026). LUZ / Pracownik 4.
 // Gameplay owns the real constants (data/combat-m0.ts, data/mechanics-m0.ts) – this file only
 // documents what FX names mean, so a renderer hook can resolve string durations, and lists where
 // the GRAF document is behind the spec (FX_SPEC_DIFFS, to be fixed in assety-m1.md, not by hand
@@ -15,11 +15,17 @@ export type FxParamStatus =
   /** FX-only value (visual timing), not a mechanics constant */
   | 'fxOnly'
   /** not used in M1 (kept for M0) */
-  | 'unusedInM1';
+  | 'unusedInM1'
+  /** follows a Game Director decision; the spec table (§2.16) still has the old value – S16 */
+  | 'gdDecisionSpecStale';
 
 export interface FxParamDef {
-  /** Value per mechaniki-m1.md v0.5 (ms, cells, % …). */
-  value: number | Readonly<Record<string, number>>;
+  /** Value per mechaniki-m1.md v0.5.2 / GD decisions (ms, cells, % …, or a text enum). */
+  value: number | string | Readonly<Record<string, number>>;
+  /** Allowed values of a text enum parameter (e.g. EVAC_ALERT_MOMENT). */
+  allowed?: readonly string[];
+  /** Old value still in the spec table (status gdDecisionSpecStale). */
+  specValue?: number | string;
   status: FxParamStatus;
   /** Name in mechaniki-m1.md when it differs from the FX name. */
   specName?: string;
@@ -60,8 +66,8 @@ export const FX_PARAMS = {
   DEATH_SCREEN_MIN_MS: { value: 1500, status: 'ok', note: 'fx_death_screen phase "locked"' },
   DEATH_SCREEN_AUTO_MS: {
     value: 5000,
-    status: 'ok',
-    note: 'fx_death_screen total (locked 1500 + continue 3500)',
+    status: 'stale',
+    note: 'v0.5.2 §2.7 (UI M8): manual CONTINUE only, auto transition removed (still in the §2.16 table). FX: durationMs 5000, phase "continue" 3500 ms.',
   },
   PRINT_ANIM_MS: { value: 600, status: 'ok', note: 'fx_base_print' },
   // Skills (§2.5, §2.16)
@@ -80,13 +86,26 @@ export const FX_PARAMS = {
   SK3_DRONE_RANGE: { value: 5, status: 'ok' },
   SK3_DRONE_HP: { value: 40, status: 'ok' },
   // Evacuation and lift (§2.9, §2.16) – EVAC_*_S are seconds like the spec; frame ms = S × 1000
-  EVAC_CALL_HOLD_MS: { value: 1500, status: 'ok', note: 'R6 proposal (1.0 s) waits for GD – S15' },
+  EVAC_CALL_HOLD_MS: {
+    value: 1000,
+    status: 'gdDecisionSpecStale',
+    specValue: 1500,
+    note: 'decyzja GD R6, spec nieaktualny – S16: §2.9 prose v0.5.2 = 1,0 s, §2.16 table = 1500',
+  },
   EVAC_ARRIVE_S: { value: { 1: 5, 2: 7, 3: 9 }, status: 'ok' },
   EVAC_HOLD_S: { value: 10, status: 'ok', note: 'state "open" 10000 ms' },
   EVAC_RECALL_COOLDOWN_S: {
-    value: 15,
-    status: 'ok',
-    note: 'state "departed" 15000 ms; R6: 5 s – S15',
+    value: 5,
+    status: 'gdDecisionSpecStale',
+    specValue: 15,
+    note: 'decyzja GD R6, spec nieaktualny – S16: §2.9 prose v0.5.2 = 5 s, §2.16 table = 15; state "departed" 5000 ms',
+  },
+  EVAC_ALERT_MOMENT: {
+    value: 'arrival',
+    allowed: ['call', 'arrival'],
+    status: 'gdDecisionSpecStale',
+    specValue: 'call',
+    note: 'text enum. GD R6 A: alarm on liftArrived (fx_evac_shaft.states.open.alarm); §2.16 table still "call" – S16',
   },
   EVAC_ALERT_RADIUS: { value: 12, status: 'ok' },
   LIFT_DEPART_MS: {
@@ -153,8 +172,6 @@ export const FX_PARAMS = {
     status: 'ok',
     note: 'false in M1 (Z5) – no enemy-respawn FX exists',
   },
-  // Not a parameter: prose note the document keeps inside `params` (fx_evac_shaft).
-  unitNote: { value: 0, status: 'fxOnly', note: 'text "EVAC_*_S w sekundach…", not a number' },
 } as const satisfies Record<string, FxParamDef>;
 
 export type FxParamName = keyof typeof FX_PARAMS;
@@ -167,8 +184,6 @@ export const FX_DURATION_KEYWORDS = {
   durationMs: 'the effect/track durationMs',
   untilNextState: 'hold until the object changes state',
   untilWallHit: 'boss charge: until chargeWallHit',
-  'untilWallHit (maks. ok. 2800 ms przy torze 28 pól)':
-    'same as untilWallHit (document keeps prose in the field; max BOSS_CHARGE_MAX_MS_28_CELLS)',
   untilOpened: 'until the shaft/gate opens (fx_evac_shaft)',
   attackWindupMs: 'wind-up of the attacker (windupMs by enemy type)',
   SK3_DRONE_LIFE_MS: 'FX_PARAMS.SK3_DRONE_LIFE_MS',
@@ -185,8 +200,9 @@ export function resolveFxDurationMs(key: string, ctx: { depth?: 1 | 2 | 3 } = {}
 }
 
 /**
- * Where assety-m1.md (v1.1) is still behind mechaniki-m1.md v0.5 – for GRAF / Assety
- * (field → is → should). v1.1: all value differences resolved; only format nits remain.
+ * Where assety-m1.md (v1.2) differs from mechaniki-m1.md v0.5.2 – for GRAF / Mechaniki
+ * (field → is → should). Values that follow a GD decision missing in the spec table are status
+ * 'gdDecisionSpecStale' in FX_PARAMS (S16) – that is for Mechaniki, not GRAF.
  */
 export const FX_SPEC_DIFFS: readonly {
   field: string;
@@ -195,16 +211,19 @@ export const FX_SPEC_DIFFS: readonly {
   source: string;
 }[] = [
   {
-    field: 'fx_boss_rail_guardian.states.charge.durationMs',
-    is: '"untilWallHit (maks. ok. 2800 ms przy torze 28 pól)" (prose inside a duration field)',
+    field:
+      'fx_death_screen.durationMs / frames[1] (phase "continue") / params.DEATH_SCREEN_AUTO_MS',
+    is: '5000 ms total, phase "continue" 3500 ms, auto transition',
     should:
-      '"untilWallHit" + the comment in `note` (value correct; format only, for a machine-readable keyword)',
-    source: 'graf-fx/1 format (assety-m1.md §0)',
+      'no auto transition: phase "continue" holds until continuePressed; drop DEATH_SCREEN_AUTO_MS',
+    source:
+      'mechaniki v0.5.2 §2.7 pt 3 ("Przejście tylko ręczne", UI M8); the §2.16 table still lists it – spec inconsistent',
   },
   {
-    field: 'fx_evac_shaft.params.unitNote',
-    is: 'text inside `params`',
-    should: 'move to `note` (params = numbers from mechanics)',
-    source: 'assety-m1.md §0 ("params – liczby z mechaniki")',
+    field: 'fx_death_screen.frames[1].lines[M1_DEATH_BTN].input',
+    is: '["tap", "Enter", "ATK"]',
+    should:
+      '["tap", "Enter"] – spec: "tap albo Enter (Spacja nie, żeby trzymany atak nie przeskoczył ekranu)"; ATK = Space/J → confirm with UI/GD',
+    source: 'mechaniki v0.5.2 §2.7 pt 3',
   },
 ];

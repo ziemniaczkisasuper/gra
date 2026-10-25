@@ -47,6 +47,17 @@ export interface FxLine {
   tokenFg?: PaletteKey;
   /** Condition (prose), e.g. 'zjazd do bazy'. */
   onlyWhen?: string;
+  /** Hide the whole line in this case, e.g. 'killerUnknown …' (M1_DEATH_01). */
+  hideWhen?: string;
+  /** Token order (prose), e.g. chronological, {hit_3} = killing blow. */
+  order?: string;
+  /** Separator between repeated tokens, e.g. ' · '. */
+  separator?: string;
+  /** Formatting rules (prose), e.g. how to drop empty slots. */
+  rules?: readonly string[];
+  /** Button line (M1_DEATH_BTN): enabled from this ms of the screen, accepted inputs. */
+  activeFromMs?: number;
+  input?: readonly string[];
   readonly [extra: string]: unknown;
 }
 
@@ -97,7 +108,32 @@ export interface FxTrack {
   trigger?: string | readonly string[];
   endsOn?: readonly string[];
   reduceMotion?: FxReduceMotion | Readonly<Record<string, FxReduceMotion>>;
+  /** Anchor per runtime case (killerHighlight: killerAlive / killerDiedSameTick / killerUnknown). */
+  anchorRules?: readonly FxAnchorRule[];
+  /** Side alarm started with this state (fx_evac_shaft.states.open: R6 A). */
+  alarm?: FxAlarm;
   readonly [extra: string]: unknown;
+}
+
+export interface FxAnchorRule {
+  case: string;
+  anchor: string;
+  /** 'skip' = draw nothing in this case. */
+  action?: 'skip' | string;
+  cells?: string;
+  frames?: string;
+  note?: string;
+}
+
+export interface FxAlarm {
+  trigger: string;
+  /** Effect id played on every target (e.g. 'fx_alert'). */
+  effect: string;
+  targets: string;
+  /** FX_PARAMS name of the radius. */
+  radiusParam: string;
+  textId?: string;
+  note?: string;
 }
 
 /** An effect: a single track and/or composite parts / states / timelines / variants. */
