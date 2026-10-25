@@ -8,6 +8,10 @@ export interface ActionState {
   skill1: boolean;
   skill2: boolean;
   skill3: boolean;
+  /** M1 USE (E / touch USE): interact with the faced / adjacent cell; held = hold interactions. */
+  use: boolean;
+  /** M1 heal (Q / touch [+]): Med-Patch. */
+  heal: boolean;
   /** Edge only: true in the one step after Esc/P/|| was pressed. */
   pause: boolean;
   /**
@@ -17,16 +21,18 @@ export interface ActionState {
   digitalMove?: boolean;
 }
 
-export type ButtonAction = 'attack' | 'skill1' | 'skill2' | 'skill3' | 'pause';
+export type ButtonAction = 'attack' | 'skill1' | 'skill2' | 'skill3' | 'use' | 'heal' | 'pause';
 export const BUTTON_ACTIONS: readonly ButtonAction[] = [
   'attack',
   'skill1',
   'skill2',
   'skill3',
+  'use',
+  'heal',
   'pause',
 ];
 /** Buttons that get the short-tap buffer (pause does not – it would toggle twice). */
-const BUFFERED: readonly ButtonAction[] = ['attack', 'skill1', 'skill2', 'skill3'];
+const BUFFERED: readonly ButtonAction[] = ['attack', 'skill1', 'skill2', 'skill3', 'use', 'heal'];
 
 /**
  * An input device adapter (keyboard, touch, gamepad...). Called once per simulation step.
@@ -75,6 +81,8 @@ export function emptyActions(): ActionState {
     skill1: false,
     skill2: false,
     skill3: false,
+    use: false,
+    heal: false,
     pause: false,
   };
 }

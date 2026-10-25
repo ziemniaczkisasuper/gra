@@ -85,7 +85,7 @@ export class TouchSource implements InputSource {
       move: this.stickId !== null ? this.stick.vector : { x: 0, y: 0 },
     };
     const held = new Set(this.buttons.values());
-    for (const b of ['attack', 'skill1', 'skill2', 'skill3'] as const)
+    for (const b of ['attack', 'skill1', 'skill2', 'skill3', 'use', 'heal'] as const)
       out[b] = held.has(b) || this.latched.has(b);
     this.latched.clear();
     return out;

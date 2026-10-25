@@ -19,7 +19,9 @@ export const DEFAULT_BINDINGS: Readonly<Record<string, KeyBinding>> = {
   Digit1: 'skill1',
   Digit2: 'skill2',
   Digit3: 'skill3',
-  // Alternative skill keys (sterowanie.md §3). M1 (not bound yet): KeyE = USE, KeyQ = Med-Patch.
+  // M1 (sterowanie.md §3, ui-m1 S-T4): E = USE, Q = Med-Patch. Alternative skill keys below.
+  KeyE: 'use',
+  KeyQ: 'heal',
   KeyK: 'skill1',
   KeyL: 'skill2',
   Semicolon: 'skill3',
@@ -135,7 +137,7 @@ export class KeyboardSource implements InputSource {
     const x = this.axis('left', 'right');
     const y = this.axis('up', 'down');
     const out: Partial<ActionState> = {};
-    for (const a of ['attack', 'skill1', 'skill2', 'skill3', 'pause'] as const) {
+    for (const a of ['attack', 'skill1', 'skill2', 'skill3', 'use', 'heal', 'pause'] as const) {
       out[a] = a === 'pause' ? this.latchedButton(a) : this.active(a);
     }
 
