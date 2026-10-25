@@ -19,6 +19,12 @@ const roundTrip = (g: ReturnType<typeof gameFromSave>) =>
   gameFromSave(parseSave(JSON.parse(saveToJson(snapshot(g, 1))), D));
 
 describe('contracts wiring: save v3 section', () => {
+  it('new game has the board in state.sections.contracts (section registered by import)', () => {
+    const g = gameFromSave(null);
+    expect(g.sections.contracts).toBeDefined();
+    expect(g.sections.contracts).toBe(getContracts(g));
+  });
+
   it('new game rolls the board from stream("contracts"), deterministic per seed', () => {
     const a = gameFromSave(null);
     const b = gameFromSave(null);

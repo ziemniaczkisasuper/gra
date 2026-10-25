@@ -14,7 +14,8 @@ import { GlyphRenderer } from './render/glyph-renderer';
 import { renderScene } from './render/scene';
 import { getCombatHud, takeAutoPauseRequest } from './combat/combat';
 import { installCombat } from './combat/install';
-import { installContracts } from './integration/contracts'; // also registers the 'contracts' save section
+import './contracts/save'; // registers the 'contracts' save section BEFORE readSave()/gameFromSave()
+import { installContracts } from './integration/contracts';
 import { renderCombatOverlay } from './combat/overlay';
 import {
   decodeSaveCode,
@@ -68,6 +69,8 @@ let state: GameState = fromSave(readSave(store));
 installCombat(); // PROG / Gameplay: combat systems (combat/README.md)
 // LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
 installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
+// TODO(base, M1): after evacuation / death reprint call refillContractsAtBase(state, ctx, emit)
+// from integration/contracts.ts (ctx = lift stops + solved variants). M0 has no base yet.
 
 const input = new InputManager();
 const keyboard = new KeyboardSource(window, undefined, undefined, window); // blur → release keys
