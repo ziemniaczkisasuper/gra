@@ -9,7 +9,7 @@ npm install
 npm run dev       # serwer deweloperski (http://localhost:5173), w konsoli dostępne window.__gra
 npm test          # Vitest (logika: pętla, RNG, zapis, wejście, kolizje, kamera)
 npm run lint      # ESLint (+ `npm run format` = Prettier)
-npm run build     # tsc + vite build → dist/ (base '/', Cloudflare Pages)
+npm run build     # tsc + vite build → dist/ (base './', działa pod /gra/ i dowolną ścieżką)
 npm run preview   # podgląd zbudowanej wersji
 ```
 Na telefonie w tej samej sieci: `npm run dev -- --host` i adres IP komputera.
@@ -211,14 +211,10 @@ Repozytorium jest **tylko lokalne** (bez remote, nic nie jest wypychane). Tożsa
   `git checkout -- <plik>` czy `git stash` na cudzych zmianach.
 - `.gitignore`: `node_modules`, `dist`, raporty testów (`test-results`, `playwright-report`, `**/.results/`), `scripts/fonts-src/`.
 
-## Deploy: Cloudflare Pages
-Repo prywatne; nic nie jest wypychane z tego katalogu – podłączenie do Cloudflare robi właściciel repo.
-- Build command: `npm ci && npm run build`
-- Build output directory: `dist`
-- Root directory: ten katalog (`prog/game`), jeśli nie jest korzeniem repo.
-- Node: **20** (`.nvmrc`; w Cloudflare zmienna `NODE_VERSION=20`).
-- `vite.config.ts`: `base: '/'` – gra działa pod korzeniem domeny (`*.pages.dev` / własna domena).
-- `public/_headers` (trafia do `dist/_headers`): `/assets/*` – `max-age=31536000, immutable` (nazwy z hashem);
-  `/fonts/*` – 1 dzień + rewalidacja; `/`, `/index.html`, `/sw.js`, manifest – `no-cache`.
-- Sprawdzenie lokalne: `npm run build && npx vite preview` → http://localhost:4173/.
-- Workflow GitHub Pages (`.github/workflows/deploy.yml`) usunięty.
+## Deploy: GitHub Pages (gałąź gh-pages, publikuje Producent)
+Z tego katalogu nic nie jest wypychane (brak remote); build na gałąź `gh-pages` publikuje Producent.
+- Build: `npm ci && npm run build` → katalog `dist/` (Node 20, `.nvmrc`).
+- `vite.config.ts`: `base: './'` – ścieżki względne, gra działa pod `/gra/` i pod dowolnym innym adresem.
+- Brak workflow GitHub Actions w repo.
+- `public/_headers` (cache dla hostingu typu Cloudflare/Netlify) zostaje; GitHub Pages go ignoruje.
+- Sprawdzenie lokalne: `npm run build && npx vite preview --base /gra/` → http://localhost:4173/gra/.
