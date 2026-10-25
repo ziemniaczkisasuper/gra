@@ -23,6 +23,8 @@
   --edge: 16px;
   --hud-font: 16px;
   --atk-size: 72px;
+  --skill-size: 48px;
+  --skill-gap: 8px;
   --ctl-hit: 8px;
   --hud-band: 72px;
 }
@@ -176,6 +178,63 @@ body {
   left: auto;
   right: 0;
 }
+/* Aim stick: the half opposite the move stick (right, or left when left-handed). */
+.aim-zone {
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--hud-band) + var(--safe-t));
+  bottom: 0;
+  right: 0;
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+.left-handed .aim-zone {
+  right: auto;
+  left: 0;
+}
+.aim-zone[hidden] {
+  display: none;
+}
+.aim-base,
+.aim-knob {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  display: none;
+  pointer-events: none;
+}
+.aim-base.active,
+.aim-knob.active {
+  display: block;
+}
+.aim-base {
+  box-sizing: border-box;
+  border: 1px dashed var(--ui-frame);
+  border-radius: 50%;
+  background: var(--ui-control-bg);
+  opacity: 0.8;
+}
+/* Dead-zone ring: diameter = 2 × 35% of the stick radius (width set from touch-controls). */
+.aim-dead {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  border: 1px solid var(--ui-frame);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.aim-knob {
+  box-sizing: border-box;
+  line-height: 38px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ui-text-strong);
+  border: 1px solid var(--ui-text);
+  background: var(--ui-control-active-bg);
+}
 .stick-base,
 .stick-knob {
   position: fixed;
@@ -240,6 +299,7 @@ body {
   display: none;
 }
 .atk-btn {
+  z-index: 2;
   width: var(--atk-size);
   height: var(--atk-size);
   right: calc(var(--edge) + var(--safe-r));
@@ -247,7 +307,8 @@ body {
   font-size: 18px;
   letter-spacing: 0.05em;
 }
-.atk-btn.held {
+.atk-btn.held,
+.skill-btn.held {
   color: var(--ui-text-strong);
   border-color: var(--ui-accent);
   background: var(--ui-control-active-bg);
@@ -257,7 +318,59 @@ body {
   right: auto;
   left: calc(var(--edge) + var(--safe-l));
 }
-/* M1 placeholders (hidden in M0): USE above ATK, skills in an arc, Med-Patch above skills */
+/* Skill arc above the aim-stick corner (left edge when left-handed). USE / Med-Patch stay hidden. */
+.skill-slots {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.skill-btn {
+  width: var(--skill-size);
+  height: var(--skill-size);
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  font-size: 11px;
+  letter-spacing: 0;
+  pointer-events: auto;
+}
+/* Keep the 8px gap as a real gap: the shared .ctl-btn hit slop would close it. */
+.skill-btn::before {
+  inset: 0;
+}
+.skill-btn.s1 {
+  right: calc(var(--edge) + var(--safe-r));
+  bottom: calc(
+    var(--edge) + var(--safe-b) + var(--atk-size) + var(--skill-gap) + 2 *
+      (var(--skill-size) + var(--skill-gap))
+  );
+}
+.skill-btn.s2 {
+  right: calc(var(--edge) + var(--safe-r) + (var(--skill-size) + var(--skill-gap)));
+  bottom: calc(
+    var(--edge) + var(--safe-b) + var(--atk-size) + var(--skill-gap) +
+      (var(--skill-size) + var(--skill-gap))
+  );
+}
+.skill-btn.s3 {
+  right: calc(var(--edge) + var(--safe-r) + 2 * (var(--skill-size) + var(--skill-gap)));
+  bottom: calc(var(--edge) + var(--safe-b) + var(--atk-size) + var(--skill-gap));
+}
+.left-handed .skill-btn.s1,
+.left-handed .skill-btn.s2,
+.left-handed .skill-btn.s3 {
+  right: auto;
+}
+.left-handed .skill-btn.s1 {
+  left: calc(var(--edge) + var(--safe-l));
+}
+.left-handed .skill-btn.s2 {
+  left: calc(var(--edge) + var(--safe-l) + (var(--skill-size) + var(--skill-gap)));
+}
+.left-handed .skill-btn.s3 {
+  left: calc(var(--edge) + var(--safe-l) + 2 * (var(--skill-size) + var(--skill-gap)));
+}
 .use-btn {
   width: 56px;
   height: 48px;

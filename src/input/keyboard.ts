@@ -1,5 +1,5 @@
 import { M0 } from '../data/mechanics-m0';
-import type { ActionState, ButtonAction, InputSource } from './actions';
+import type { ActionState, AimSourceHints, ButtonAction, InputSource } from './actions';
 
 type DirKey = 'up' | 'down' | 'left' | 'right';
 type AimKey = 'aimUp' | 'aimDown' | 'aimLeft' | 'aimRight';
@@ -135,10 +135,10 @@ export class KeyboardSource implements InputSource {
     return false;
   }
 
-  poll(): Partial<ActionState> {
+  poll(): Partial<ActionState> & AimSourceHints {
     const x = this.axis('left', 'right');
     const y = this.axis('up', 'down');
-    const out: Partial<ActionState> = {};
+    const out: Partial<ActionState> & AimSourceHints = {};
     for (const a of ['attack', 'skill1', 'skill2', 'skill3', 'use', 'heal', 'pause'] as const) {
       out[a] = a === 'pause' ? this.latchedButton(a) : this.active(a);
     }
@@ -150,9 +150,21 @@ export class KeyboardSource implements InputSource {
     if (ax !== 0 || ay !== 0) {
       out.aim = { x: ax, y: ay };
       out.digitalAim = true;
+      out.aimOrigin = 'keys';
+      // Edge only: holding the same arrows must not refresh last-used every poll.
+      if (this.aimPressed()) out.aimUsed = true;
     }
     this.latched.clear();
     return out;
+  }
+
+  /** An arrow key went down since the previous poll (a "use" of the keys aim source). */
+  private aimPressed(): boolean {
+    for (const code of this.latched) {
+      const b = this.bindings[code];
+      if (b === 'aimUp' || b === 'aimDown' || b === 'aimLeft' || b === 'aimRight') return true;
+    }
+    return false;
   }
 
   /**

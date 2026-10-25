@@ -13,10 +13,21 @@ export interface ActionState {
   /** M1 heal (Q / touch [+]): Med-Patch. */
   heal: boolean;
   /**
-   * Aim direction, independent of movement (twin-stick): arrows > mouse / aim stick.
-   * null = not aiming. What it does in combat is Gameplay's.
+   * Aim direction, independent of movement (twin-stick). The last source that was
+   * used wins: an arrow press, a mouse move of at least one cell or a click, or an
+   * aim-stick deflection past AIM_DEADZONE. null = not aiming.
    */
   aim: Dir8 | null;
+  /**
+   * True when the aim stick is outside AIM_DEADZONE or an arrow key is held.
+   * Pointing with the mouse does not fire.
+   */
+  aimFire: boolean;
+  /**
+   * Map cell under the cursor when the mouse is the winning aim source and the
+   * cursor is over the canvas; otherwise null. Keyboard and stick never set it.
+   */
+  aimCell: { x: number; y: number } | null;
   /** Edge only: true in the one step after Esc/P/|| was pressed. */
   pause: boolean;
   /**
@@ -24,8 +35,21 @@ export interface ActionState {
    * step to a diagonal (mechaniki §1.2 v0.5, QA-M0-002). Joystick / touch: false.
    */
   digitalMove?: boolean;
-  /** The aim comes from digital keys (arrows) – wins over mouse / stick aim. */
+  /** The winning aim comes from arrow keys (DIAG_GRACE applies to that aim only). */
   digitalAim?: boolean;
+}
+
+/** Which device last supplied an aim. Held state keeps a source active; only a use refreshes it. */
+export type AimSourceName = 'keys' | 'mouse' | 'stick';
+
+/**
+ * Poll-only hints. InputManager reads them while merging and does not copy them
+ * onto the ActionState returned by sample().
+ */
+export interface AimSourceHints {
+  aimOrigin?: AimSourceName;
+  /** This poll is a use of aimOrigin (press, cell change, click, or a new stick direction). */
+  aimUsed?: boolean;
 }
 
 export type ButtonAction = 'attack' | 'skill1' | 'skill2' | 'skill3' | 'use' | 'heal' | 'pause';
@@ -50,7 +74,7 @@ const BUFFERED: readonly ButtonAction[] = ['attack', 'skill1', 'skill2', 'skill3
  *   stay inactive until released and pressed again.
  */
 export interface InputSource {
-  poll(): Partial<ActionState>;
+  poll(): Partial<ActionState> & AimSourceHints;
   reset(): void;
 }
 
@@ -91,6 +115,8 @@ export function emptyActions(): ActionState {
     use: false,
     heal: false,
     aim: null,
+    aimFire: false,
+    aimCell: null,
     pause: false,
   };
 }
@@ -140,18 +166,69 @@ export class InputManager {
 
   private aimHold: { dir: Dir8; left: number } | null = null;
   private lastAim: Dir8 | null = null;
+  /** Most recent aim use. Inactive sources fall through to the next-newest one. */
+  private lastAimSource: AimSourceName | null = null;
+  private aimClock = 0;
+  private aimUsedAt: Record<AimSourceName, number> = { keys: 0, mouse: 0, stick: 0 };
 
-  private pollAll(): { move: { x: number; y: number }; raw: Set<ButtonAction>; digital: boolean } {
+  private noteAimUse(source: AimSourceName): void {
+    this.aimUsedAt[source] = ++this.aimClock;
+    this.lastAimSource = source;
+  }
+
+  /** Newest use whose source is still active. Same-poll uses: the later source in the list wins. */
+  private pickAimWinner(active: Record<AimSourceName, boolean>): AimSourceName | null {
+    const last = this.lastAimSource;
+    if (last && active[last]) return last;
+    let best: AimSourceName | null = null;
+    let bestAt = 0;
+    for (const s of ['keys', 'mouse', 'stick'] as const) {
+      if (s === last || !active[s]) continue;
+      if (this.aimUsedAt[s] > bestAt) {
+        best = s;
+        bestAt = this.aimUsedAt[s];
+      }
+    }
+    return best;
+  }
+
+  private pollAll(): {
+    move: { x: number; y: number };
+    raw: Set<ButtonAction>;
+    digital: boolean;
+    winner: AimSourceName | null;
+    keyDir: Dir8 | null;
+    mouseDir: Dir8 | null;
+    mouseCell: { x: number; y: number } | null;
+    stickDir: Dir8 | null;
+    aimFire: boolean;
+  } {
     const move = { x: 0, y: 0 };
     const raw = new Set<ButtonAction>();
     let digital = false;
-    let keyAim: Dir8 | null = null;
-    let otherAim: Dir8 | null = null;
+    let keyDir: Dir8 | null = null;
+    let mouseDir: Dir8 | null = null;
+    let mouseCell: { x: number; y: number } | null = null;
+    let mouseOver = false;
+    let stickDir: Dir8 | null = null;
     for (const src of this.sources) {
       const p = src.poll();
-      if (p.aim) {
-        if (p.digitalAim) keyAim ??= p.aim;
-        else otherAim ??= p.aim;
+      if (p.aimOrigin === 'keys') {
+        if (p.aim) keyDir = p.aim;
+        if (p.aimUsed) this.noteAimUse('keys');
+      } else if (p.aimOrigin === 'mouse') {
+        if (p.aimCell) {
+          mouseOver = true;
+          mouseCell = p.aimCell;
+          mouseDir = p.aim ?? null;
+        }
+        if (p.aimUsed) this.noteAimUse('mouse');
+      } else if (p.aimOrigin === 'stick') {
+        if (p.aim) stickDir = p.aim;
+        if (p.aimUsed) this.noteAimUse('stick');
+      } else if (p.digitalAim && p.aim) {
+        keyDir = p.aim;
+        if (p.aimUsed) this.noteAimUse('keys');
       }
       if (p.move) {
         move.x += p.move.x;
@@ -160,15 +237,23 @@ export class InputManager {
       }
       for (const a of BUTTON_ACTIONS) if (p[a]) raw.add(a);
     }
-    this.polledAim = keyAim
-      ? { dir: keyAim, digital: true }
-      : otherAim
-        ? { dir: otherAim, digital: false }
-        : null;
-    return { move, raw, digital };
+    const winner = this.pickAimWinner({
+      keys: keyDir !== null,
+      mouse: mouseOver,
+      stick: stickDir !== null,
+    });
+    return {
+      move,
+      raw,
+      digital,
+      winner,
+      keyDir,
+      mouseDir,
+      mouseCell,
+      stickDir,
+      aimFire: keyDir !== null || stickDir !== null,
+    };
   }
-
-  private polledAim: { dir: Dir8; digital: boolean } | null = null;
 
   /**
    * DIAG_GRACE for arrow aim (mechaniki §1.2 v0.5 analogue): the aim starts at once and turns
@@ -242,12 +327,21 @@ export class InputManager {
       if (left > 0) this.buffer.set(a, left - 1);
     }
     out.pause = raw.has('pause');
-    out.aim = this.aimOf(this.polledAim);
-    if (out.aim && this.polledAim?.digital) out.digitalAim = true;
+    const keyAim = this.aimOf(polled.keyDir ? { dir: polled.keyDir, digital: true } : null);
+    if (polled.winner === 'keys') {
+      out.aim = keyAim;
+      if (out.aim) out.digitalAim = true;
+    } else if (polled.winner === 'mouse') {
+      out.aim = polled.mouseDir;
+      if (polled.mouseCell) out.aimCell = polled.mouseCell;
+    } else if (polled.winner === 'stick') {
+      out.aim = polled.stickDir;
+    }
+    out.aimFire = polled.aimFire;
     this.prevRaw = raw;
     this.pressed = pressed;
 
-    if (raw.size > 0 || x !== 0 || y !== 0 || out.aim) this.idleSteps = 0;
+    if (raw.size > 0 || x !== 0 || y !== 0 || out.aim || out.aimFire) this.idleSteps = 0;
     else this.idleSteps++;
     return out;
   }
@@ -260,8 +354,10 @@ export class InputManager {
     this.pendingMove = null;
     this.pressed = new Set();
     this.idleSteps = 0;
-    this.polledAim = null;
     this.lastAim = null;
     this.aimHold = null;
+    this.lastAimSource = null;
+    this.aimClock = 0;
+    this.aimUsedAt = { keys: 0, mouse: 0, stick: 0 };
   }
 }

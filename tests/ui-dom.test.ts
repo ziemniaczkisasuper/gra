@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventBus, type GameEvents } from '../src/core/events';
 import { GameLoop } from '../src/core/loop';
 import { PALETTE, UI_STYLE } from '../src/data/style';
 import { InputManager } from '../src/input/actions';
 import { KeyboardSource } from '../src/input/keyboard';
+import { aimStick } from '../src/input/aim';
 import { TouchSource } from '../src/input/touch';
+import { STRINGS } from '../src/data/strings';
 import { hpBar, hpLevel, hpText } from '../src/ui/hud';
 import { createUi, MENU_RESUME_CODES, type Ui } from '../src/ui/overlay';
+import { setAutoAim } from '../src/ui/settings';
 
 const key = (code: string, target: EventTarget = document.body) =>
   target.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true }));
@@ -308,6 +311,68 @@ const contrast = (a: number[], b: number[]) => {
   const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
   return (x! + 0.05) / (y! + 0.05);
 };
+
+const ptr = (type: string, id: number, x: number, y: number, target: EventTarget) => {
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(e, { pointerId: id, clientX: x, clientY: y, pointerType: 'touch' });
+  target.dispatchEvent(e);
+};
+
+describe('twin-stick aim controls', () => {
+  beforeEach(() => {
+    localStorage.removeItem('gra.ui.autoAim');
+    setAutoAim(false);
+  });
+  afterEach(() => {
+    setAutoAim(false);
+    localStorage.removeItem('gra.ui.autoAim');
+  });
+
+  it('aim stick feeds setAimStick; a skill press does not start it', () => {
+    const { root } = setup();
+    const zone = root.querySelector('.aim-zone') as HTMLElement;
+    const atk = root.querySelector('.atk-btn') as HTMLElement;
+    expect(atk.hidden).toBe(true);
+    expect(zone.hidden).toBe(false);
+    expect(root.querySelector('.skill-btn.s1')!.textContent).toBe(STRINGS.skillDash);
+    expect(root.querySelector('.skill-btn.s2')!.textContent).toBe(STRINGS.skillPulse);
+    expect(root.querySelector('.skill-btn.s3')!.textContent).toBe(STRINGS.skillDrone);
+
+    const dash = root.querySelector('.skill-btn.s1') as HTMLElement;
+    ptr('pointerdown', 4, 10, 10, dash);
+    expect(dash.classList.contains('held')).toBe(true);
+    expect(root.querySelector('.aim-base')!.classList.contains('active')).toBe(false);
+    expect(aimStick.poll().aim).toBeUndefined();
+    ptr('pointerup', 4, 10, 10, window);
+
+    ptr('pointerdown', 7, 300, 200, zone);
+    ptr('pointermove', 7, 360, 200, window);
+    expect(aimStick.poll().aim).toEqual({ x: 1, y: 0 });
+    expect(root.querySelector('.aim-base')!.classList.contains('active')).toBe(true);
+    expect(root.querySelector('.aim-dead')).not.toBeNull();
+    ptr('pointerup', 7, 360, 200, window);
+    expect(aimStick.poll().aim).toBeUndefined();
+    expect(root.querySelector('.aim-base')!.classList.contains('active')).toBe(false);
+  });
+
+  it('Auto-aim shows ATK, hides the aim zone, and the pause toggle does not resume', () => {
+    const { loop, root } = setup();
+    loop.pause('menu');
+    const toggle = root.querySelector('.auto-aim-toggle') as HTMLButtonElement;
+    expect(toggle.textContent).toBe(STRINGS.autoAimOff);
+    toggle.click();
+    expect(toggle.textContent).toBe(STRINGS.autoAimOn);
+    expect(loop.mode).toBe('paused');
+    expect(localStorage.getItem('gra.ui.autoAim')).toBe('1');
+    const atk = root.querySelector('.atk-btn') as HTMLElement;
+    expect(atk.hidden).toBe(false);
+    expect((root.querySelector('.aim-zone') as HTMLElement).hidden).toBe(true);
+    toggle.click();
+    expect(toggle.textContent).toBe(STRINGS.autoAimOff);
+    expect(loop.mode).toBe('paused');
+    expect(atk.hidden).toBe(true);
+  });
+});
 
 describe('HUD contrast ≥ 4.5:1', () => {
   const fgs = [UI_STYLE.text, UI_STYLE.accent, UI_STYLE.warning, UI_STYLE.danger, UI_STYLE.frame];

@@ -1,5 +1,7 @@
-// Grid helpers for combat: reach, line of sight, BFS (mechaniki-m1.md §1.2, §1.3, §1.6).
+// Grid helpers for combat: reach, line of sight, BFS (mechaniki-m1.md §1.2, §1.3, §1.6),
+// melee arc (wariant-twin-stick §2) and ranged Bresenham (§3).
 // Movement rules (walls, no corner cutting) come from world/collision.ts – one rule for all.
+import { ARC_OFFSETS } from '../data/combat-m0';
 import { canStep, type OccupiedFn } from '../world/collision';
 import type { TileMap } from '../world/tilemap';
 
@@ -74,6 +76,87 @@ export function inMeleeReach(map: TileMap, from: Cell, to: Cell, range: number):
  * `occupied` cells are impassable except the goal itself (so we can path *to* the player).
  * Neighbour order = DIRS8 → deterministic tie-breaks.
  */
+const keyOf = (x: number, y: number) => `${x},${y}`;
+
+/**
+ * Melee swing cells (wariant-twin-stick §2.2), in ARC_OFFSETS order for `dir` (one of DIRS8).
+ * A wall does not hit and blocks its distance-2 children. A distance-1 diagonal is cut when
+ * both orthogonal neighbours are walls (same corner rule as movement). Entities do not block.
+ * Cells outside the map are not included (outside counts as solid via TileMap).
+ */
+export function arcCells(map: TileMap, from: Cell, dir: Cell): Cell[] {
+  const idx = DIRS8.findIndex((d) => d.x === dir.x && d.y === dir.y);
+  if (idx < 0) return [];
+  const offsets = ARC_OFFSETS[idx];
+  if (!offsets) return [];
+  const blocked = new Set<string>();
+  const out: Cell[] = [];
+  for (const [dx, dy] of offsets) {
+    const dist = Math.max(Math.abs(dx), Math.abs(dy));
+    const px = Math.sign(dx);
+    const py = Math.sign(dy);
+    if (dist >= 2 && blocked.has(keyOf(px, py))) continue;
+    const x = from.x + dx;
+    const y = from.y + dy;
+    const solid = map.isSolid(x, y);
+    const cut =
+      dist === 1 &&
+      dx !== 0 &&
+      dy !== 0 &&
+      map.isSolid(from.x + dx, from.y) &&
+      map.isSolid(from.x, from.y + dy);
+    if (dist === 1 && (solid || cut)) {
+      blocked.add(keyOf(dx, dy));
+      continue;
+    }
+    if (solid) continue;
+    out.push({ x, y });
+  }
+  return out;
+}
+
+/**
+ * Bresenham cells from `from` (exclusive) toward `to` (inclusive), at most `maxCells`.
+ * Stops before a wall and before a diagonal step whose both orthogonal neighbours are walls.
+ * The start cell is not included.
+ */
+export function bresenhamCells(map: TileMap, from: Cell, to: Cell, maxCells: number): Cell[] {
+  const out: Cell[] = [];
+  if (maxCells <= 0 || (from.x === to.x && from.y === to.y)) return out;
+  let x = from.x;
+  let y = from.y;
+  const dx = Math.abs(to.x - from.x);
+  const dy = -Math.abs(to.y - from.y);
+  const sx = from.x < to.x ? 1 : -1;
+  const sy = from.y < to.y ? 1 : -1;
+  let err = dx + dy;
+  for (let guard = 0; guard < 64 && out.length < maxCells; guard++) {
+    if (x === to.x && y === to.y) break;
+    const e2 = 2 * err;
+    let nx = x;
+    let ny = y;
+    let stepX = false;
+    let stepY = false;
+    if (e2 >= dy) {
+      err += dy;
+      nx += sx;
+      stepX = true;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      ny += sy;
+      stepY = true;
+    }
+    if (nx === x && ny === y) break;
+    if (stepX && stepY && map.isSolid(x + sx, y) && map.isSolid(x, y + sy)) break;
+    if (map.isSolid(nx, ny)) break;
+    out.push({ x: nx, y: ny });
+    x = nx;
+    y = ny;
+  }
+  return out;
+}
+
 export function bfsFirstStep(
   map: TileMap,
   from: Cell,

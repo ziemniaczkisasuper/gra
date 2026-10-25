@@ -7,7 +7,7 @@ import { M0 } from './data/mechanics-m0';
 import { STRINGS } from './data/strings';
 import { FONT, PALETTE } from './data/style';
 import { aimStick, MouseAimSource } from './input/aim';
-import { InputManager } from './input/actions';
+import { InputManager, type Dir8 } from './input/actions';
 import { KeyboardSource } from './input/keyboard';
 import { TouchSource } from './input/touch';
 import {
@@ -110,6 +110,8 @@ input.add(touch);
 // Twin-stick aim: arrows (keyboard.ts) > mouse over the canvas > second touch stick (UI).
 input.add(new MouseAimSource(document.documentElement, screenToCell, () => state.player));
 input.add(aimStick);
+/** Last sampled aim, for the direction marker beside the player (render/scene.ts). */
+let aimMarker: Dir8 | null = null;
 
 const renderer = new GlyphRenderer(canvas, PALETTE.background, FONT.family, FONT.lineHeight);
 
@@ -119,7 +121,9 @@ const loop = new GameLoop({
   events: bus,
   update(dt) {
     const actions = input.sample();
+    aimMarker = actions.aim;
     if (actions.pause) {
+      aimMarker = null;
       loop.pause('menu');
       return;
     }
@@ -143,16 +147,19 @@ const loop = new GameLoop({
     if (loop.pauseReason === 'tutorial') {
       // ui-m1 §11.4: any direction resumes at once (no countdown), ATK / skills are ignored.
       const a = input.sample();
+      aimMarker = a.aim;
       if (a.pause) loop.pause('menu');
       else if (a.move.x !== 0 || a.move.y !== 0) loop.resume();
       return;
     }
     // While paused only Esc/P (here) and RESUME / Enter (ui) resume. In 'text' the text
     // window owns the keyboard (Esc closes it) – the pause edge must not resume there.
-    if (input.sample().pause && loop.pauseReason !== 'text') loop.resume();
+    const pausedSample = input.sample();
+    aimMarker = pausedSample.aim;
+    if (pausedSample.pause && loop.pauseReason !== 'text') loop.resume();
   },
   render: (alpha) => {
-    renderScene(renderer, state, alpha);
+    renderScene(renderer, state, alpha, aimMarker);
     renderCombatOverlay(renderer, state, alpha, { fallbackHud: false }); // HP is in the DOM HUD
     const hp = getCombatHud(state);
     ui.hud.setHp(hp.hp, hp.maxHp);
@@ -240,6 +247,7 @@ bus.on('paused', ({ reason, detail }) => {
     ui.hideCountdown();
     return;
   }
+  aimMarker = null;
   input.reset();
   resetPlayerMoveMemory(state); // buffered step directions too (§1.11)
   if (reason !== 'auto') save(reason); // auto-pause saves in autoPause()

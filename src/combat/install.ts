@@ -1,6 +1,6 @@
 import { registerSystem } from '../core/game';
 import { combatPlayerPhase, combatWorldPhase, setCombatBus, type CombatBusEmit } from './combat';
-import './save'; // registers the 'combat' save section (save v3) at import time
+import './save'; // registers the 'combat' save section (save v4) at import time
 
 /**
  * Registers combat in the engine tick (call once at boot). Returns an uninstall function.

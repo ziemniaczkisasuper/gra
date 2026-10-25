@@ -49,7 +49,7 @@ export const INVENTORY_SECTION = 'inventory';
 
 // ---- state access (GameState ↔ section) ---------------------------------------------------------
 
-/** Brand-new inventory: empty bag and locker, Issue Baton + Issue Suit equipped, START_CREDITS. */
+/** Brand-new inventory: empty bag and locker, Issue Pole + Issue Suit equipped, START_CREDITS. */
 export function createInventoryState(lights: LightsLevel = 0): InventoryState {
   return {
     location: 'base',
@@ -501,7 +501,7 @@ export function issueTopUp(state: InventoryState, target: number): TopUpResult {
 
 /**
  * Player death (§2.7): loses the whole bag, all equipped gear except Issue (weapon / armor fall back
- * to Issue Baton / Issue Suit) and zoneCr; location → base (print). Contract items (Data Core) give
+ * to Issue Pole / Issue Suit) and zoneCr; location → base (print). Contract items (Data Core) give
  * contractEvents [itemLost] (ContractInputEvent).
  *
  * Woła wyłącznie walka (combat), raz na śmierć, w fazie śmierci ticka. Nikt inny nie może tego

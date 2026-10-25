@@ -114,7 +114,7 @@ test.describe('1. joystick', () => {
 
 test.describe('wielodotyk', () => {
   test('3. joystick + ATK jednocześnie (dwa pointery)', async ({ page, browserName }, info) => {
-    await openGame(page);
+    await openGame(page, 'autoaim=1');
     const t = await touchDriver(page, browserName);
     await placePlayer(page, OPEN.x, OPEN.y);
     const p = await thumbStart(page);
@@ -143,7 +143,7 @@ test.describe('wielodotyk', () => {
   });
 
   test('4. palec joysticka przeciągnięty na prawą połowę zostaje joystickiem', async ({ page, browserName }, info) => {
-    await openGame(page);
+    await openGame(page, 'autoaim=1');
     const t = await touchDriver(page, browserName);
     const vw = page.viewportSize()!;
     await placePlayer(page, OPEN.x, OPEN.y);
@@ -167,7 +167,7 @@ test.describe('wielodotyk', () => {
 });
 
 test('5. tap ATK atakuje', async ({ page, browserName }) => {
-  await openGame(page);
+  await openGame(page, 'autoaim=1');
   const t = await touchDriver(page, browserName);
   await placePlayer(page, OPEN.x, OPEN.y);
   await waitTicks(page, 1);
@@ -263,7 +263,7 @@ test('7b. auto-pauza przy prawdziwym przełączeniu karty (Chromium)', async ({ 
 });
 
 test('8. ?lefty=1 – lustrzane odbicie kontrolek', async ({ page, browserName }, info) => {
-  await openGame(page, 'lefty=1');
+  await openGame(page, 'lefty=1&autoaim=1');
   const t = await touchDriver(page, browserName);
   const vw = page.viewportSize()!;
   await expect(page.locator('.touch-controls')).toHaveClass(/left-handed/);
@@ -309,7 +309,8 @@ test('9. ?touch=1 wymusza sterowanie dotykowe (kontekst bez dotyku)', async ({ b
     await expect(page.locator('.touch-controls'), 'desktop: hidden by default').toBeHidden();
     await openGame(page, 'touch=1');
     await expect(page.locator('.touch-controls')).toBeVisible();
-    await expect(page.locator('.atk-btn')).toBeVisible();
+    await expect(page.locator('.aim-zone')).toBeVisible();
+    await expect(page.locator('.atk-btn'), 'ATK hidden until Auto-aim').toBeHidden();
     await page.keyboard.press('KeyD');
     await sleep(page, 100);
     await expect(page.locator('.touch-controls'), '?touch=1: keyboard does not hide').toBeVisible();
@@ -471,7 +472,7 @@ test.describe('11. okno tekstu', () => {
 
 test.describe('12. gracz i HUD nie nachodzą na siebie', () => {
   test('pozycje gracza przy krawędziach mapy vs HP i [||]', async ({ page }, info) => {
-    await openGame(page);
+    await openGame(page, 'autoaim=1');
     const hp = await box(page, '.hud-row.hp');
     const pause = await box(page, '.pause-btn');
     const atk = await box(page, '.atk-btn');

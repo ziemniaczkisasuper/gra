@@ -206,7 +206,14 @@ function bodyFree(
   for (const q of bodyCells(x, y)) {
     if (state.map.isSolid(q.x, q.y) || isEvacTile(state.map, q.x, q.y)) return false;
     if (!ignorePlayer && state.player.solid && sameCell(state.player, q)) return false;
-    if (state.entities.some((e) => e.solid && !own.has(e.id) && sameCell(e, q))) return false;
+    // Buddy Drone is not a charge obstacle (wariant-twin-stick §8.4). The swing only
+    // checks the player, so the drone is not a swing target either.
+    if (
+      state.entities.some(
+        (e) => e.solid && e.kind !== 'buddyDrone' && !own.has(e.id) && sameCell(e, q),
+      )
+    )
+      return false;
   }
   return true;
 }

@@ -6,6 +6,7 @@ import type { Depth } from '../data/contracts-m1';
 import {
   BACKPACK_SLOTS,
   GEAR_SLOTS,
+  ISSUE_POLE_ITEM_ID,
   ITEM_DEFS,
   MEDPATCH_ITEM_ID,
   MEDPATCH_MAX,
@@ -77,7 +78,8 @@ function readGear(raw: unknown, slot: ItemSlot | undefined, at: string): GearInf
 function readItem(raw: unknown, at: string): InvItem | null {
   if (raw === null) return null;
   if (!isObj(raw) || typeof raw.itemId !== 'string') throw new SaveError(`${at}: bad item`);
-  const d = ITEM_DEFS[raw.itemId];
+  const itemId = raw.itemId === 'M1_ITEM_ISSUE_BATON' ? ISSUE_POLE_ITEM_ID : raw.itemId;
+  const d = ITEM_DEFS[itemId];
   if (!d) throw new SaveError(`${at}: unknown item ${raw.itemId}`);
   if (!isInt(raw.count, 1, d.stack)) throw new SaveError(`${at}: bad count`);
   const it: InvItem = { itemId: d.id, count: raw.count };

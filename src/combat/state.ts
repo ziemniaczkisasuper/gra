@@ -1,8 +1,10 @@
 // Combat state – plain data (JSON-friendly), no DOM / canvas.
 // Positions, facing and the tick counters moveCooldown / attackWindup / attackCooldown live
 // on the engine's Entity (entities/entity.ts); everything else combat needs lives here.
+import type { Dir8 } from '../input/actions';
 import type { CombatConfig, EnemyTypeId, SkillId } from '../data/combat-m0';
 import type { Cell } from './grid';
+import type { PlayerProjectile } from './projectiles';
 import type { CombatTicks } from './timing';
 
 export type EnemyAi = 'idle' | 'alert' | 'chase' | 'attack' | 'return' | 'dead';
@@ -20,12 +22,13 @@ export interface PlayerCombat {
   /** Fractional tick carry of the accumulator (ACTION_TICK_ACCUMULATOR), |carry| ≤ 0.5. */
   atkCarry: number;
   moveCarry: number;
-  /** §2.6: target of a bump queued during cooldown (null = normal ATK queue / auto-target). */
+  /** §2.6: target of a bump queued during cooldown (null = normal ATK queue). */
   queuedTargetId: number | null;
   /** Respawn point (§1.8) – the map's '@' (see mapSpawn), not the saved position. */
   spawn: Cell;
-  /** Pending blow: auto-target frozen at start (§1.3); null target = tap → hits `aim`. */
-  attack: { targetId: number | null; aim: Cell } | null;
+  /** Pending swing or shot. `dir` is locked at the press. `target` is a ranged cell
+   *  (mouse / auto-aim / aim assist); null = fly along `dir`. Melee ignores `target`. */
+  attack: { dir: Dir8; aimCell: Cell | null; target: Cell | null } | null;
   /** §1.3: ATK pressed in the last ATK_QUEUE_MS of cooldown. */
   atkQueued: boolean;
   prevAttack: boolean;
@@ -196,6 +199,24 @@ export type CombatEvent =
       source?: 'attack' | 'pulse' | 'drone';
     }
   | { type: 'playerWhiff' }
+  /** v0.6 melee arc. Emitted on the resolution tick even when `hitIds` is empty. */
+  | { type: 'playerSwing'; entityId: number; dir: Dir8; cells: Cell[]; hitIds: number[] }
+  | {
+      type: 'projectileFired';
+      entityId: number;
+      projectileId: number;
+      dir: Dir8;
+      from: Cell;
+      cells: Cell[];
+    }
+  | {
+      type: 'projectileHit';
+      entityId: number;
+      projectileId: number;
+      cell: Cell;
+      /** null = wall or the end of the path (max range). */
+      hitId: number | null;
+    }
   | { type: 'playerHit'; dmg: number; enemyId?: number }
   | { type: 'playerDodged'; enemyId: number }
   | { type: 'enemyMiss'; enemyId: number }
@@ -240,6 +261,11 @@ export interface CombatData {
   player: PlayerCombat;
   enemies: Map<number, EnemyCombat>;
   drone: DroneState | null;
+  /** v0.6 player shots. Not saved. */
+  projectiles: PlayerProjectile[];
+  nextProjectileId: number;
+  /** Enemy ids hit while they held no token, front = next recipient. Not saved. */
+  tokenPriority: number[];
   /** S12: last ≤ 3 hits on the player (saved). */
   recentHits: PlayerHitInfo[];
   /** S12: set at death, cleared at respawn (saved). */
