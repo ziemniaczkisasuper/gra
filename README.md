@@ -87,6 +87,8 @@ Zasada: `core/game.ts`, `world/`, `entities/`, `combat/`, `save/schema|codec` **
 - Walidacja: pola Silnika sprawdza `schema.ts`. Sekcja modułu musi być obiektem, a jej treść sprawdza `deserialize()` modułu.
   Każdy błąd daje `SaveError` i **cały zapis jest odrzucany** (bez częściowego wczytania; przy starcie: nowa gra, przy imporcie: komunikat i dotychczasowa gra zostaje).
   Nieznana sekcja (żaden moduł jej nie zarejestrował) jest pomijana z ostrzeżeniem.
+- Limity liczb (QA-M0-007, `SAVE_LIMITS` w `schema.ts`): `tick` to bezpieczna liczba całkowita 0..2^31; `savedAt` i znaczniki czasu 0..8,64e15;
+  czasy gry 0..2^31 × 50 ms; pozycja gracza to całkowite pole 0..4095; `rngState` maks. 64 strumienie, nazwy 1–64 znaki.
 - `snapshot(state, now)` → `SaveData` (seed, tick, wszystkie strumienie RNG, gracz, `serialize()` każdej sekcji).
   `gameFromSave(data | null, { mapRows })` → nowy `GameState` (dla `null`: nowa gra z `fresh()` każdej sekcji).
 - Eksport: plik `.json` lub kod tekstowy `GRA1z.<base64url(deflate-raw)>` (CompressionStream), bez kompresji `GRA1j.<base64url>`.

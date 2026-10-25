@@ -31,6 +31,24 @@ export interface SaveData {
   [section: string]: unknown;
 }
 
+/**
+ * QA-M0-007: upper bounds of core numbers. tick ≤ 2^31 (≈ 3.4 years of play at 20 Hz) keeps
+ * `tick++` exact and every tick-derived number far from 2^53.
+ */
+export const SAVE_LIMITS = {
+  MAX_TICK: 2 ** 31,
+  /** Max Date value (ms) – savedAt and the timestamps below. */
+  MAX_TIME_MS: 8.64e15,
+  /** playtime counters (ms): 2^31 ticks × 50 ms. */
+  MAX_PLAYTIME_MS: 2 ** 31 * 50,
+  /** Map coordinates are integer cells 0..MAX_CELL. */
+  MAX_CELL: 4095,
+  MAX_RNG_STREAMS: 64,
+  MAX_RNG_STREAM_NAME: 64,
+} as const;
+
+const TIME_KEYS = new Set(['lastExportAt', 'exportReminderSnoozedUntil', 'iosHintHiddenUntil']);
+
 /** Optional non-negative numeric top-level fields (save protection). */
 export const OPTIONAL_NUMBER_KEYS = [
   'playtimeMs',
@@ -79,6 +97,11 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 const isU32 = (v: unknown): v is number =>
   isNum(v) && Number.isInteger(v) && v >= 0 && v <= 0xffffffff;
 
+const inRange = (v: unknown, min: number, max: number): v is number =>
+  isNum(v) && v >= min && v <= max;
+const isIntIn = (v: unknown, min: number, max: number): v is number =>
+  Number.isSafeInteger(v) && (v as number) >= min && (v as number) <= max;
+
 export function migrate(input: unknown, defaults: SaveDefaults): Raw {
   if (!isObj(input)) throw new SaveError('Save is not an object');
   let raw: Raw = input;
@@ -109,19 +132,23 @@ export interface ValidateOptions {
 export function validate(raw: Raw, opts: ValidateOptions = {}): SaveData {
   const warn = opts.onWarn ?? ((m: string) => console.warn(m));
   if (raw.version !== SAVE_VERSION) throw new SaveError('Wrong save version');
-  if (!isNum(raw.savedAt) || raw.savedAt < 0) throw new SaveError('Bad savedAt');
+  const L = SAVE_LIMITS;
+  if (!inRange(raw.savedAt, 0, L.MAX_TIME_MS)) throw new SaveError('Bad savedAt');
   if (!isU32(raw.seed)) throw new SaveError('Bad seed');
-  if (!isNum(raw.tick) || !Number.isInteger(raw.tick) || raw.tick < 0)
-    throw new SaveError('Bad tick');
+  if (!isIntIn(raw.tick, 0, L.MAX_TICK)) throw new SaveError('Bad tick');
   const rs = raw.rngState;
   if (!isObj(rs)) throw new SaveError('Bad rngState');
   const rngState: Record<string, number> = {};
-  for (const [k, val] of Object.entries(rs)) {
+  const streams = Object.entries(rs);
+  if (streams.length > L.MAX_RNG_STREAMS) throw new SaveError('Too many rngState streams');
+  for (const [k, val] of streams) {
+    if (k.length === 0 || k.length > L.MAX_RNG_STREAM_NAME) throw new SaveError('Bad rngState key');
     if (!isU32(val)) throw new SaveError(`Bad rngState.${k}`);
     rngState[k] = val;
   }
   const p = raw.player;
-  if (!isObj(p) || !isNum(p.x) || !isNum(p.y)) throw new SaveError('Bad player position');
+  if (!isObj(p) || !isIntIn(p.x, 0, L.MAX_CELL) || !isIntIn(p.y, 0, L.MAX_CELL))
+    throw new SaveError('Bad player position');
   if (!FACINGS.includes(p.facing as Facing)) throw new SaveError('Bad player facing');
 
   const out: SaveData = {
@@ -134,7 +161,8 @@ export function validate(raw: Raw, opts: ValidateOptions = {}): SaveData {
   };
   for (const k of OPTIONAL_NUMBER_KEYS) {
     if (raw[k] === undefined) continue;
-    if (!isNum(raw[k]) || (raw[k] as number) < 0) throw new SaveError(`Bad ${k}`);
+    const max = TIME_KEYS.has(k) ? L.MAX_TIME_MS : L.MAX_PLAYTIME_MS;
+    if (!inRange(raw[k], 0, max)) throw new SaveError(`Bad ${k}`);
     out[k] = raw[k] as number;
   }
   for (const [name, value] of Object.entries(raw)) {
