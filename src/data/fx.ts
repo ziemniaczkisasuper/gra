@@ -32,7 +32,23 @@ import type { PaletteKey } from './style';
 import { FX_COMMON_DATA, FX_GLYPHS_M1_DATA, FX_M1_DATA, SCREEN_BASE_M1_DATA } from './fx-m1';
 
 export type FxLayer = 'terrain' | 'ground' | 'entity' | 'cell' | 'overlay' | 'screen';
-export type FxMs = number | 'durationMs' | 'untilNextState';
+/** Frame time: ms, or a keyword resolved at runtime (see FX_DURATION_KEYWORDS in fx-params.ts). */
+export type FxMs = number | string;
+
+/** Screen-layer text line: a text id (with {tokens}) or a literal label. */
+export interface FxLine {
+  textId?: string;
+  text?: string;
+  fg: PaletteKey;
+  bold?: boolean;
+  /** Token → description of the runtime value, e.g. enemy_name, hit_1. */
+  tokens?: Readonly<Record<string, string | undefined>>;
+  /** Colour of the substituted token values. */
+  tokenFg?: PaletteKey;
+  /** Condition (prose), e.g. 'zjazd do bazy'. */
+  onlyWhen?: string;
+  readonly [extra: string]: unknown;
+}
 
 /** One cell of a frame: GlyphStyle with palette keys + offset from the anchor. */
 export interface FxCell {
@@ -56,8 +72,10 @@ export interface FxFrame {
   riseRows?: number;
   /** Screen layer: dim the whole map. */
   dim?: { color: PaletteKey; alpha: number };
-  /** Screen layer: text lines by text id. */
-  lines?: readonly { textId: string; fg: PaletteKey; bold?: boolean }[];
+  /** Screen layer: text lines. */
+  lines?: readonly FxLine[];
+  /** Named phase of a screen (fx_death_screen: 'locked' = no skip, 'continue' = CONTINUE shown). */
+  phase?: string;
   /** Cell to draw instead when the target cell is occupied (player / drone stays visible). */
   ifOccupied?: FxCell;
   readonly [extra: string]: unknown;

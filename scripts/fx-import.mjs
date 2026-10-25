@@ -27,7 +27,7 @@ const DOC_NAMES = {
   telegraphTargetBg: 'telegraphBg', bossCellBg: 'bossBg', dataCoreCellBg: 'dataCoreBg',
   sectorDark: 'sectorOff',
 };
-const COLOR_KEYS = new Set(['fg', 'bg', 'litFg', 'outline', 'color']);
+const COLOR_KEYS = new Set(['fg', 'bg', 'litFg', 'outline', 'color', 'tokenFg']);
 
 function key(hex, ctx) {
   const h = hex.toUpperCase();

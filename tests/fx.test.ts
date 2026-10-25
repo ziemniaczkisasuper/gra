@@ -8,6 +8,7 @@ import {
   fxTracks,
   type FxFrame,
 } from '../src/data/fx';
+import { FX_DURATION_KEYWORDS } from '../src/data/fx-params';
 import { PALETTE } from '../src/data/style';
 import { subsetCodePoints } from './helpers/woff2';
 
@@ -88,7 +89,7 @@ describe('FX data (assety-m1.md v1.0)', () => {
           if (
             typeof f.ms === 'number'
               ? !(f.ms > 0 && f.ms % 50 === 0)
-              : !['durationMs', 'untilNextState'].includes(f.ms)
+              : !(f.ms in FX_DURATION_KEYWORDS)
           )
             bad.push(`${path}: ms=${String(f.ms)}`);
         }
@@ -163,6 +164,7 @@ describe('FX parameter names (mechaniki-m1.md v0.5)', () => {
       for (const [p, v] of Object.entries(o.params as Record<string, unknown>)) {
         const def = (FX_PARAMS as Record<string, { value: unknown; status: string }>)[p];
         if (
+          typeof v !== 'string' &&
           def &&
           ['ok', 'renamed', 'fxOnly'].includes(def.status) &&
           JSON.stringify(v) !== JSON.stringify(def.value)
