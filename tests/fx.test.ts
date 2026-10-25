@@ -140,3 +140,36 @@ describe('FX data (assety-m1.md v1.0)', () => {
     expect([...chars].filter((c) => !SUBSET.has(c.codePointAt(0)!)).map(cp)).toEqual([]);
   });
 });
+
+describe('FX parameter names (mechaniki-m1.md v0.5)', () => {
+  it('every string duration and every params key used by FX is documented', async () => {
+    const { FX_PARAMS, FX_DURATION_KEYWORDS } = await import('../src/data/fx-params');
+    const unknown = new Set<string>();
+    visit(ALL, 'ALL', (o) => {
+      for (const k of ['durationMs', 'ms'] as const)
+        if (typeof o[k] === 'string' && !((o[k] as string) in FX_DURATION_KEYWORDS))
+          unknown.add(o[k] as string);
+      if (o.params && typeof o.params === 'object')
+        for (const p of Object.keys(o.params)) if (!(p in FX_PARAMS)) unknown.add(p);
+    });
+    expect([...unknown]).toEqual([]);
+  });
+
+  it("FX params marked 'ok' / 'renamed' / 'fxOnly' have the spec value", async () => {
+    const { FX_PARAMS } = await import('../src/data/fx-params');
+    const bad: string[] = [];
+    visit(FX, 'FX', (o, path) => {
+      if (!o.params || typeof o.params !== 'object') return;
+      for (const [p, v] of Object.entries(o.params as Record<string, unknown>)) {
+        const def = (FX_PARAMS as Record<string, { value: unknown; status: string }>)[p];
+        if (
+          def &&
+          ['ok', 'renamed', 'fxOnly'].includes(def.status) &&
+          JSON.stringify(v) !== JSON.stringify(def.value)
+        )
+          bad.push(`${path}.params.${p}: ${JSON.stringify(v)} ≠ ${JSON.stringify(def.value)}`);
+      }
+    });
+    expect(bad).toEqual([]);
+  });
+});
