@@ -1,7 +1,9 @@
-// Tunables from /workspace/GRA/design/mechaniki-m1.md, table 1.14 (DESIGN / Mechaniki,
-// draft v0.1). Times in ms (multiples of TICK_MS), converted with msToTicks().
-// Engine uses: TICK_MS, movement, INPUT_TAP_BUFFER_MS, DIAG_GRACE_MS, AUTOPAUSE_IDLE_MS.
-// Combat/AI values are here so the whole table lives in one data file – implemented by Gameplay.
+// Tunables from /workspace/GRA/design/mechaniki-m1.md, table 1.14 (DESIGN / Mechaniki, v0.5).
+// QA-M0-008: EVERY row of table 1.14 lives here (single data file); data/combat-m0.ts spreads M0
+// into the combat profiles (re-export) and holds only M1 values (table 2.16).
+// Times in ms (multiples of TICK_MS), converted with msToTicks().
+// Engine uses: TICK_MS, movement, INPUT_TAP_BUFFER_MS, DIAG_GRACE_MS, MOVE_DEADZONE, AUTOPAUSE_*.
+// Combat/AI values are implemented by Gameplay.
 
 export const TICK_MS = 50;
 
@@ -30,12 +32,17 @@ export const M0 = {
   PLAYER_REGEN_PER_S: 5,
   PLAYER_RESPAWN_MS: 3000,
   PLAYER_IFRAMES_ON_HIT_MS: 0,
+  /** §1.8: world freeze before the SIGNAL LOST overlay. */
+  PLAYER_DEATH_FREEZE_MS: 500,
 
   // Input
   /** Short taps stay active for this long (2 ticks) so they are not lost between ticks. */
   INPUT_TAP_BUFFER_MS: 100,
   /** ATK pressed in the last 150 ms of cooldown is queued – COMBAT (Gameplay) implements it. */
   ATK_QUEUE_MS: 150,
+  /** Move vectors shorter than this are "no direction" (toDir8). Safety net against analog
+   *  noise – the joystick dead zone itself (15%) is UI's. */
+  MOVE_DEADZONE: 0.15,
 
   // Enemy (Scrap Crawler)
   ENEMY_HP: 80,
@@ -43,11 +50,19 @@ export const M0 = {
   ENEMY_MOVE_DIAG_MS: 300,
   ENEMY_ATK_RANGE: 1,
   ENEMY_ATK_WINDUP_MS: 500,
+  /** GD rule (v0.5): every enemy wind-up − 1 tick ≥ 400 ms → min 450 ms; not shortened by depth. */
+  ENEMY_WINDUP_MIN_MS: 450,
   ENEMY_ATK_COOLDOWN_MS: 700,
   ENEMY_DMG_MIN: 12,
   ENEMY_DMG_MAX: 18,
   TELEGRAPH_BLINK_MS: 100,
   TELEGRAPH_FAST_LAST_MS: 150,
+  /** §1.7 pt 4: fast blink period during the last TELEGRAPH_FAST_LAST_MS. */
+  TELEGRAPH_FAST_BLINK_MS: 50,
+  /** §1.7 pt 5: strike marker '*' on the target cell. */
+  STRIKE_FX_MS: 100,
+  /** §1.7 pt 5: optional vibration on player hit (UI decides whether to use it). */
+  HIT_VIBRATE_MS: 20,
   ENEMY_DETECT_RADIUS: 7,
   ENEMY_ALERT_MS: 300,
   ENEMY_LEASH_RADIUS: 12,
@@ -73,4 +88,7 @@ export const M0 = {
   // View (minimum visible cells around the player)
   VIEW_MIN_LANDSCAPE: { cols: 31, rows: 17 },
   VIEW_MIN_PORTRAIT: { cols: 17, rows: 21 },
+  /** §1.10 ARENA_SIZE: test arena in cells (checked against data/maps ARENA_M0 by a test). */
+  ARENA_COLS: 40,
+  ARENA_ROWS: 20,
 } as const;

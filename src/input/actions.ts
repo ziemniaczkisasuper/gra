@@ -54,7 +54,10 @@ const DIRS: readonly Dir8[] = [
 ];
 
 /** Quantise a move vector to one of 8 directions (or null inside the dead zone). */
-export function toDir8(move: { x: number; y: number }, deadZone = 0.15): Dir8 | null {
+export function toDir8(
+  move: { x: number; y: number },
+  deadZone: number = M0.MOVE_DEADZONE,
+): Dir8 | null {
   if (Math.hypot(move.x, move.y) < deadZone) return null;
   const sector = Math.round(Math.atan2(move.y, move.x) / (Math.PI / 4));
   return DIRS[((sector % 8) + 8) % 8]!;

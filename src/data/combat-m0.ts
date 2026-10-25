@@ -3,26 +3,16 @@
 //
 // - Table 1.14 values are defined ONCE in data/mechanics-m0.ts (M0, shared with the engine)
 //   and spread in here – change them there.
-// - COMBAT_EXTRAS: §1.14 rows added in v0.3/v0.4 that the engine file does not have, plus the
-//   M1 combat values from table 2.16 implemented so far. Each line names its §.
+// - COMBAT_EXTRAS: only the M1 combat values from table 2.16 implemented so far (all of table
+//   1.14 is in data/mechanics-m0.ts, QA-M0-008). Each line names its §.
 // - Profiles: COMBAT_M0 (prototype rules, default) and COMBAT_M1 (= M0 + overrides from 2.16).
 // Times are ms (multiples of TICK_MS) → ticks via combat/timing.ts (§1.1).
 import { M0 } from './mechanics-m0';
 
 export const COMBAT_EXTRAS = {
-  /** §1.14 / §1.8: world freeze before the SIGNAL LOST overlay. */
-  PLAYER_DEATH_FREEZE_MS: 500,
-  /** §1.14 / §1.7 pt 4: fast blink period during the last TELEGRAPH_FAST_LAST_MS. */
-  TELEGRAPH_FAST_BLINK_MS: 50,
-  /** §1.14 / §1.7 pt 5: strike marker '*' on the target cell. */
-  STRIKE_FX_MS: 100,
-  /** §1.14 / §1.7 pt 5: optional vibration on player hit (UI decides whether to use it). */
-  HIT_VIBRATE_MS: 20,
-  /** §1.14: safety net against analog noise (the joystick dead zone itself is UI's). */
-  MOVE_DEADZONE: 0.15,
-  /** §1.14 / §1.10: test arena size in cells (checked against data/maps ARENA_M0 by a test). */
-  ARENA_COLS: 40,
-  ARENA_ROWS: 20,
+  // QA-M0-008: every §1.14 row (PLAYER_DEATH_FREEZE_MS, TELEGRAPH_FAST_BLINK_MS, STRIKE_FX_MS,
+  // HIT_VIBRATE_MS, MOVE_DEADZONE, ARENA_COLS/ROWS, ENEMY_WINDUP_MIN_MS…) is in
+  // data/mechanics-m0.ts and comes in through `...M0` in COMBAT_M0.
 
   // ---- M1 (§2.16) – off / neutral in the M0 profile -----------------------------------------
   /** §2.6: a step into an enemy becomes a basic attack on it. M0: false, M1: true. */
