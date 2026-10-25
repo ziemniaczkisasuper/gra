@@ -13,16 +13,18 @@ export function loadGame(
   store: KeyValueStore,
   game: NewGameOptions = {},
   opts: LoadOptions = {},
-): { state: GameState; failure: LoadFailure | null } {
+): { state: GameState; failure: LoadFailure | null; fromSave: boolean } {
   const r = loadSave(store, opts);
-  if (r.status === 'empty') return { state: gameFromSave(null, game), failure: null };
+  if (r.status === 'empty')
+    return { state: gameFromSave(null, game), failure: null, fromSave: false };
   if (r.status === 'failed')
     return {
       state: gameFromSave(null, game),
       failure: { reason: r.reason, backupKey: r.backupKey },
+      fromSave: false,
     };
   try {
-    return { state: gameFromSave(r.data, game), failure: null };
+    return { state: gameFromSave(r.data, game), failure: null, fromSave: true };
   } catch (e) {
     // valid JSON + schema, but a module could not apply it (e.g. map changed) → corrupt
     (opts.warn ?? ((m: string, x?: unknown) => console.warn(m, x)))(
@@ -39,6 +41,20 @@ export function loadGame(
     return {
       state: gameFromSave(null, game),
       failure: { reason: f.reason, backupKey: f.backupKey },
+      fromSave: false,
     };
   }
+}
+
+/**
+ * QA-M0-011: a game loaded from a save ALWAYS starts paused ('auto' = "Tap to resume"), and
+ * RESUME runs the 1.0 s countdown – not a single simulation tick before the first RESUME
+ * (a saved fight would otherwise hit the player before any input). A new game starts at once.
+ */
+export function startGameLoop(
+  loop: { pause(reason: 'auto'): boolean; start(): void },
+  fromSave: boolean,
+): void {
+  if (fromSave) loop.pause('auto');
+  loop.start();
 }

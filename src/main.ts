@@ -42,7 +42,7 @@ import {
 import { downloadSaveFile, pickSaveFile } from './save/files';
 import { memoryStore } from './save/storage';
 import { initSaveApi } from './save/api';
-import { loadGame } from './save/boot';
+import { loadGame, startGameLoop } from './save/boot';
 import { isIosNotStandalone, requestPersistentStorage } from './save/storage-env';
 import { applyCssVars } from './ui/css-vars';
 import { createUi } from './ui/overlay';
@@ -307,7 +307,7 @@ async function boot(): Promise<void> {
     /* fallback font */
   }
   fit();
-  loop.start();
+  startGameLoop(loop, loaded.fromSave); // QA-M0-011: from a save → paused until RESUME
   void requestPersistentStorage().then((p) => console.info(`storage.persist: ${p}`));
   if (loaded.failure) saveApi.reportLoadFailure(loaded.failure); // UI: save:loadFailed
   saveApi.checkExportReminder(); // after load; UI may also call saveApi.checkExportReminder()
