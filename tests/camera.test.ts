@@ -30,7 +30,9 @@ describe('camera', () => {
   it('centres on the target and clamps to map edges', () => {
     expect(computeCamera({ x: 30, y: 15 }, 20, 10, 60, 30)).toEqual({ x: 20, y: 10 });
     expect(computeCamera({ x: 1, y: 1 }, 20, 10, 60, 30)).toEqual({ x: 0, y: 0 });
-    expect(computeCamera({ x: 59, y: 29 }, 20, 10, 60, 30)).toEqual({ x: 40, y: 20 });
+    // bottom: CAMERA_MIN_BOTTOM_ROWS (4) below @ win over the map clamp (scrolls past the map)
+    expect(computeCamera({ x: 59, y: 29 }, 20, 10, 60, 30)).toEqual({ x: 40, y: 23.5 });
+    expect(computeCamera({ x: 59, y: 25 }, 20, 10, 60, 30)).toEqual({ x: 40, y: 20 });
   });
   it('a map smaller than the view: centred horizontally, top-aligned vertically', () => {
     expect(computeCamera({ x: 5, y: 5 }, 100, 50, 60, 30, M0)).toEqual({ x: -20, y: -0 });
@@ -162,5 +164,37 @@ describe('font fit: ≥ 17 rows at 568×320, minimum views elsewhere', () => {
     expect(v.lh).toBe(1.2);
     expect(v.rows).toBeGreaterThanOrEqual(21);
     expect(v.cols).toBeGreaterThanOrEqual(17);
+  });
+});
+
+describe('568×320: @ ≥ 4 rows above the bottom of the usable area (dynamic insets)', () => {
+  const W = 568;
+  const H = 320;
+  const lh = lineHeightFor(H);
+  const px = pickFontPx(W, H, { ...fit, lineHeight: lh });
+  const cellH = Math.round(px * lh);
+  const cellW = Math.round(px * 0.6);
+  const rows = H / cellH;
+  const cols = W / cellW;
+  const check = () => {
+    const m = cameraMargins();
+    for (let y = 0; y < 40; y++) {
+      const t = y + 0.5;
+      const c = computeCamera({ x: 20.5, y: t }, cols, rows, 64, 40);
+      const bottomOfAt = t + 0.5 - c.y;
+      expect(rows - m.bottom - bottomOfAt).toBeGreaterThanOrEqual(4 - 1e-9);
+      expect(t - 0.5 - c.y).toBeGreaterThanOrEqual(m.top - 1e-9); // still below the top band
+    }
+  };
+  it('default touch insets, then a growing hint bar (setCameraInsets / setCameraRect live)', () => {
+    resetCameraInsets();
+    setCameraViewport(cellW, cellH, H);
+    setDefaultCameraInsets(defaultCameraInsets(true));
+    check();
+    setCameraRect('hintBar', { x: 150, y: H - 104 - 24, width: 268, height: 24 });
+    check();
+    setCameraInsets({ top: 64, bottom: 104 + 36, left: 0, right: 0 }); // bar grew
+    check();
+    resetCameraInsets();
   });
 });

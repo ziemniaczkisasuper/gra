@@ -25,6 +25,12 @@ export const CAMERA_TOUCH_LAYOUT = {
   controlsGap: 16,
 } as const;
 
+/**
+ * Rows kept free between `@` and the bottom edge of the usable area (ui-m1 S2: look-ahead
+ * when walking down, e.g. 568×320 with the hint bar). Shrinks only if the band is too small.
+ */
+export const CAMERA_MIN_BOTTOM_ROWS = 4;
+
 /** Desktop (keyboard): no controls over the map. */
 export const CAMERA_DESKTOP_INSETS: CameraInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 

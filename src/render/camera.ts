@@ -1,5 +1,6 @@
 import {
   CAMERA_DESKTOP_INSETS,
+  CAMERA_MIN_BOTTOM_ROWS,
   CAMERA_TOUCH_LAYOUT,
   COMPACT_VIEW_MAX_H,
   LINE_HEIGHT_COMPACT,
@@ -30,6 +31,7 @@ export function cameraAxis(
   m0 = 0,
   m1 = 0,
   align: SmallMapAlign = 'center',
+  endClear = 0,
 ): number {
   const usable = view - m0 - m1;
   let cam = t - (m0 + usable / 2);
@@ -37,7 +39,9 @@ export function cameraAxis(
     if (size <= usable) cam = align === 'start' ? -m0 : -(m0 + (usable - size) / 2);
     else cam = align === 'start' ? Math.max(-m0, size - view) : (size - view) / 2;
   } else cam = Math.min(Math.max(cam, 0), size - view);
-  const minCam = t + 0.5 - (view - m1); // target bottom/right edge inside the band
+  // `endClear` extra cells before the band end (as far as the band allows: start margin wins)
+  const clear = Math.max(0, Math.min(endClear, usable - 1));
+  const minCam = t + 0.5 - (view - m1 - clear); // target bottom/right edge inside the band
   const maxCam = t - 0.5 - m0; // target top/left edge inside the band
   if (cam < minCam) cam = minCam;
   if (cam > maxCam) cam = maxCam;
@@ -60,7 +64,15 @@ export function computeCamera(
 ): { x: number; y: number } {
   return {
     x: cameraAxis(target.x, viewCols, mapW, margins.left, margins.right, 'center'),
-    y: cameraAxis(target.y, viewRows, mapH, margins.top, margins.bottom, 'start'),
+    y: cameraAxis(
+      target.y,
+      viewRows,
+      mapH,
+      margins.top,
+      margins.bottom,
+      'start',
+      CAMERA_MIN_BOTTOM_ROWS,
+    ),
   };
 }
 
