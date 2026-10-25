@@ -48,6 +48,7 @@ export function applyContractEvent(state: ContractsState, ev: ContractInputEvent
         // Fragment only on the first solve of the variant, never for a retune, never twice.
         // [ASSUMPTION A5] The grid fragment belongs to the variant (2.15: 8 variants × 10%); the
         // completion only REPORTS it – the grid/terminal system must not light it twice.
+        // Rewards are paid by the economy/inventory module on 'contract:completed' (Engine decision).
         p.fragment = !c.retune && ev.firstSolve && !s.creditedVariants.includes(ev.variant);
         events.push({
           type: 'contract:objectiveMet',
@@ -116,8 +117,8 @@ export function applyContractEvent(state: ContractsState, ev: ContractInputEvent
       break;
     }
     case 'died': {
-      // [ASSUMPTION A4] "wraca na tablicę" (2.3/2.4/2.7) = the SAME contract stays on the board with
-      // reset progress; it is not re-rolled. Only completed slots are refilled at base.
+      // CONFIRMED by Mechanics: "wraca na tablicę" (2.3/2.4/2.7) = the SAME contract stays on the
+      // board with reset progress; it is not re-rolled. Only completed slots are refilled at base.
       s.base = s.base.map((c) => {
         if (!c) return null;
         events.push({

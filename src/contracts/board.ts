@@ -3,6 +3,7 @@
 import type { Rng } from '../core/rng';
 import {
   CONTRACT_DEFS,
+  CONTRACT_ENEMY_LOOT,
   CONTRACT_SLOTS_BASE,
   CONTRACT_SLOTS_EXCHANGE,
   CONTRACTS_M1,
@@ -10,6 +11,7 @@ import {
   TERMINAL_VARIANTS,
   type ContractDef,
   type ContractDefId,
+  type ContractTextParams,
   type Depth,
 } from '../data/contracts-m1';
 import { SaveError } from '../save/schema';
@@ -63,11 +65,10 @@ export interface PoolEntry {
 }
 
 /**
- * Weighted pool of (contract, depth) pairs.
- * Weight of a pair = def.weight × (retune ? retune.weightMult : 1) / (number of allowed depths of
- * that def). So the weight from the table is the weight of the contract TYPE, split evenly over its
- * allowed depths (Relay with 3 unlocked depths does not get 3× the share). [ASSUMPTION A1]
- * Pairs already on the board are excluded (no two identical contracts at once). [ASSUMPTION A2]
+ * Free (contract, depth) pairs on allowed depths, grouped depth by depth.
+ * Weight of a pair = def.weight[depth] × (retune ? retune.weightMult : 1) – no division among
+ * depths (Balance decision). Pairs already on the board are excluded (no duplicate contract at
+ * the same depth). The draw itself is two-stage – see pickTwoStage().
  */
 export function contractPool(state: ContractsState, ctx: BoardContext): PoolEntry[] {
   const allowed = allowedDepths(ctx);
@@ -75,17 +76,36 @@ export function contractPool(state: ContractsState, ctx: BoardContext): PoolEntr
     state.base.filter((c): c is ContractInstance => c !== null).map((c) => `${c.defId}@${c.depth}`),
   );
   const pool: PoolEntry[] = [];
-  for (const def of CONTRACTS_M1) {
-    const depths = def.depths.filter((d) => allowed.includes(d));
-    for (const depth of depths) {
-      if (taken.has(`${def.id}@${depth}`)) continue;
-      // Retune is decided per depth: the level terminal is always a variant of its own depth. [A3]
+  for (const depth of allowed) {
+    for (const def of CONTRACTS_M1) {
+      if (!def.depths.includes(depth) || taken.has(`${def.id}@${depth}`)) continue;
+      const base = def.weight[depth] ?? 0;
+      if (base <= 0) continue;
+      // Retune per depth (CONFIRMED by Mechanics): the level terminal is a variant of its depth.
       const retune = def.retune !== undefined && variantsExhausted(depth, ctx.solvedVariants);
       const mult = retune && def.retune ? def.retune.weightMult : 1;
-      pool.push({ defId: def.id, depth, retune, weight: (def.weight * mult) / depths.length });
+      pool.push({ defId: def.id, depth, retune, weight: base * mult });
     }
   }
   return pool;
+}
+
+/**
+ * Two-stage draw (owner decision): 1) depth uniformly among allowed depths (1 + unlocked stops),
+ * 2) contract type by that depth's weights (retune included).
+ * FALLBACK: depths that have no free type left (all their pairs already on the board, or zero
+ * weight) are skipped in stage 1, i.e. the depth is drawn uniformly among the allowed depths that
+ * still have a free type. This equals re-drawing the depth until it has a free type, but uses a
+ * fixed number of draws (2 per slot). No such depth at all → the slot stays empty.
+ */
+export function pickTwoStage(pool: readonly PoolEntry[], rng: Rng): PoolEntry | null {
+  const depths = DEPTHS.filter((d) => pool.some((e) => e.depth === d && e.weight > 0));
+  if (depths.length === 0) return null;
+  const depth = depths[Math.floor(rng.next() * depths.length)] as Depth;
+  return pickWeighted(
+    pool.filter((e) => e.depth === depth && e.weight > 0),
+    rng,
+  );
 }
 
 function pickWeighted(pool: readonly PoolEntry[], rng: Rng): PoolEntry | null {
@@ -109,7 +129,7 @@ export function refillBoard(state: ContractsState, rng: Rng, ctx: BoardContext):
   const events: ContractOutputEvent[] = [];
   for (let i = 0; i < s.base.length; i++) {
     if (s.base[i] !== null) continue;
-    const pick = pickWeighted(contractPool(s, ctx), rng);
+    const pick = pickTwoStage(contractPool(s, ctx), rng);
     if (!pick) break;
     const def = CONTRACT_DEFS[pick.defId];
     const inst: ContractInstance = {
@@ -122,10 +142,22 @@ export function refillBoard(state: ContractsState, rng: Rng, ctx: BoardContext):
     s = { ...s, nextId: s.nextId + 1, base: s.base.map((c, j) => (j === i ? inst : c)) };
     events.push({
       type: 'contract:offered',
-      payload: { contractId: inst.id, defId: inst.defId, depth: inst.depth, retune: inst.retune },
+      payload: {
+        contractId: inst.id,
+        defId: inst.defId,
+        depth: inst.depth,
+        retune: inst.retune,
+        textId: def.textId,
+        textParams: contractTextParams(inst),
+      },
     });
   }
   return { state: s, events };
+}
+
+/** Text parameters of a contract instance (token `{depth}` in M1_CONTR_0x). */
+export function contractTextParams(c: Pick<ContractInstance, 'depth'>): ContractTextParams {
+  return { depth: c.depth };
 }
 
 /** Active (open) contracts on the board. */
@@ -142,8 +174,21 @@ export type ContractSpawn =
       itemId: string;
       distFromShaft: [number, number];
       guards: number;
+      /** Guard composition as glyph strings (e.g. ['ddh']). */
+      guardGroups: string[];
+      /** CONTRACT_ENEMY_LOOT for the guards (0 = no Scrap, no items). */
+      enemyLoot: number;
     }
-  | { contractId: ContractId; kind: 'enemies'; count: number; distFromShaft: [number, number] };
+  | {
+      contractId: ContractId;
+      kind: 'enemies';
+      count: number;
+      distFromShaft: [number, number];
+      /** Enemy groups as glyph strings (e.g. ['sss', 'ddh']); null = generator decides. */
+      groups: string[] | null;
+      /** CONTRACT_ENEMY_LOOT for these enemies (0 = no Scrap, no items). */
+      enemyLoot: number;
+    };
 
 export function contractSpawns(state: ContractsState, depth: Depth): ContractSpawn[] {
   const out: ContractSpawn[] = [];
@@ -158,6 +203,8 @@ export function contractSpawns(state: ContractsState, depth: Depth): ContractSpa
         itemId: o.itemId,
         distFromShaft: [...o.distFromShaft],
         guards: o.guards,
+        guardGroups: [...o.guardGroups],
+        enemyLoot: CONTRACT_ENEMY_LOOT,
       });
     else
       out.push({
@@ -165,6 +212,8 @@ export function contractSpawns(state: ContractsState, depth: Depth): ContractSpa
         kind: 'enemies',
         count: o.count,
         distFromShaft: [...o.distFromShaft],
+        groups: o.groups[depth] ? [...(o.groups[depth] ?? [])] : null,
+        enemyLoot: CONTRACT_ENEMY_LOOT,
       });
   }
   return out;

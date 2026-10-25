@@ -1,4 +1,5 @@
 import type { ContractEvents } from '../contracts/types';
+import type { InventoryEvents } from '../inventory/types';
 import type { ExportReminder } from '../save/reminder';
 
 /**
@@ -82,6 +83,9 @@ export interface GameEvents extends FxTriggerEvents {
   'contract:objectiveLost': ContractEvents['contract:objectiveLost'];
   'contract:completed': ContractEvents['contract:completed'];
   'contract:failed': ContractEvents['contract:failed'];
+  // --- Run inventory (src/inventory/, owner LUZ / Pracownik 2). Emitted by the caller from the
+  // events returned by every inventory operation (pure module). See prog/ekwipunek-m1.md.
+  'inventory:changed': InventoryEvents['inventory:changed'];
 }
 
 type Handler<T> = (payload: T) => void;

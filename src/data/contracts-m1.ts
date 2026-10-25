@@ -1,11 +1,16 @@
 // BASE contracts M1 – data only (no logic). Source: design/mechaniki-m1.md v0.4, §2.4 (table
 // M1_CONTR_01..03), §2.9 (lift stops), §2.15 (grid fragments, terminal variants), §2.16
 // (CONTRACT_SLOTS, REWARD_*, RETUNE_*, CLEARPATH_ENEMY_DIST, DATACORE_DIST); design/level-design-m1.md
-// §1 and §3; fabula/zakres-m1.md §7. Economic values are (R) – working values for Balance/Economy.
+// §1 and §3; fabula/zakres-m1.md §7. Rewards, weights, CONTRACT_ENEMY_LOOT and Clear the Path at
+// depth 3: design/balans-m1.md v1.1 §5 (Balance; CtP depth 3 approved by GD). The kr/min rule is
+// measured base → base: CONTRACT_KRPM_CAP = 20 / 48 / 90 kr/min (depth 1/2/3).
 
 /** Zone depth in Sector 1 (1 Outskirts, 2 Solar Fields, 3 Rail Depot). */
 export type Depth = 1 | 2 | 3;
 export const DEPTHS: readonly Depth[] = [1, 2, 3];
+
+/** CONTRACT_KRPM_CAP measured base → base (balans-m1.md v1.1 §5) – reference for tests/QA. */
+export const CONTRACT_KRPM_CAP: Readonly<Record<Depth, number>> = { 1: 20, 2: 48, 3: 90 };
 
 /** CONTRACT_SLOTS = 2 BASE + 1 Exchange (Exchange not implemented in this module yet). */
 export const CONTRACT_SLOTS_BASE = 2;
@@ -24,8 +29,20 @@ export const TERMINAL_VARIANTS: Readonly<Record<Depth, readonly string[]>> = {
   3: ['M1_TERM_06', 'M1_TERM_03'],
 };
 
+/**
+ * CONTRACT_ENEMY_LOOT = 0 (design/balans-m1.md §5, final): contract enemies – Clear the Path
+ * targets AND Data Core guards (mechaniki §2.4: both are "wrogowie kontraktu") – drop no Scrap and
+ * no items. Multiplier for the loot system (0 = nothing). Exposed per spawn in contractSpawns().
+ */
+export const CONTRACT_ENEMY_LOOT = 0;
+
 /** Item id of the Data Core `§` (1 bag slot, lost on death). Id to be aligned with the loot table. */
 export const DATA_CORE_ITEM_ID = 'M1_ITEM_DATA_CORE';
+
+/** Parameters for the contract texts (token `{depth}` in M1_CONTR_01/02/03). */
+export interface ContractTextParams {
+  depth: Depth;
+}
 
 export interface ContractReward {
   credits: number;
@@ -37,15 +54,35 @@ export type ContractObjective =
   /** Solve this level's Power Lines terminal (TERMINAL_DIST_FROM_SHAFT 25–40, from LD). */
   | { type: 'solveTerminal' }
   /** Pick up the contract item (placed distFromShaft away, guarded by `guards` contract enemies). */
-  | { type: 'recoverItem'; itemId: string; distFromShaft: [number, number]; guards: number }
+  | {
+      type: 'recoverItem';
+      itemId: string;
+      distFromShaft: [number, number];
+      guards: number;
+      /** Guard composition as glyph strings (LD §10 / balans v1.2), e.g. ['ddh']. */
+      guardGroups: readonly string[];
+    }
   /** Kill `count` contract enemies placed distFromShaft away from the shaft. */
-  | { type: 'killContractEnemies'; count: number; distFromShaft: [number, number] };
+  | {
+      type: 'killContractEnemies';
+      count: number;
+      distFromShaft: [number, number];
+      /**
+       * CONTRACT_CLEARPATH_GROUPS: enemy groups by depth as glyph strings (s Scrapper, d Panel
+       * Drone, h Curfew Guard, t Line Sentry), depth multipliers apply. Missing depth = the
+       * generator picks the composition (not specified by Balance).
+       */
+      groups: Partial<Record<Depth, readonly string[]>>;
+    };
 
 export type ContractDefId = 'M1_CONTR_01' | 'M1_CONTR_02' | 'M1_CONTR_03';
 
 export interface ContractDef {
   id: ContractDefId;
-  /** Text id in fabula/teksty-m1-en.md (title + one-line background). */
+  /**
+   * Text id in fabula/teksty-m1-en.md (title + one-line background). The only token is `{depth}`
+   * (1–3), filled from ContractTextParams – texts themselves live with Dialogue/UI code.
+   */
   textId: ContractDefId;
   issuer: 'BASE';
   objective: ContractObjective;
@@ -53,11 +90,14 @@ export interface ContractDef {
   depths: readonly Depth[];
   /** Reward by depth (only depths listed in `depths`). */
   reward: Partial<Record<Depth, ContractReward>>;
-  /** Base weight in the pool (R). */
-  weight: number;
   /**
-   * Restore Relay only: once all variants of the depth are solved the contract becomes a
-   * "retune" (LD §3): own reward, no grid fragment, weight × retuneWeightMult.
+   * Pool weight per (contract, depth) (R, Balance decision): each entry of the pool uses its own
+   * depth's weight, NOT divided among depths. Final values: design/balans-m1.md.
+   */
+  weight: Partial<Record<Depth, number>>;
+  /**
+   * Restore Relay only: once all variants of THAT depth are solved the contract becomes a
+   * "retune" (LD §3; confirmed by Mechanics): own reward, no grid fragment, weight × weightMult.
    */
   retune?: { reward: ContractReward; weightMult: number };
   /** Expected session length (median range, ms) – telemetry/QA only, there is NO time limit (§2.4). */
@@ -77,12 +117,14 @@ export const CONTRACTS_M1: readonly ContractDef[] = [
     issuer: 'BASE',
     objective: { type: 'solveTerminal' },
     depths: [1, 2, 3],
-    // REWARD_RELAY: 40 kr (+ grid fragment on the first solve of the variant – see progress.ts)
-    reward: { 1: r(40), 2: r(40), 3: r(40) },
-    weight: 1,
-    // RETUNE_REWARD / RETUNE_WEIGHT: 40 kr / ×0.5 (R)
-    retune: { reward: r(40), weightMult: 0.5 },
-    expectedMs: [75_000, 170_000],
+    // REWARD_RELAY: 35 kr (balans v1.1; was 40) + grid fragment on the first solve of the variant
+    // (see progress.ts). 40 kr gave 21 kr/min > 20 at depth 1.
+    reward: { 1: r(35), 2: r(35), 3: r(35) },
+    weight: { 1: 1, 2: 1, 3: 1 },
+    // RETUNE_REWARD = 25 kr + 2 Copper (balans v1.1; was 30), no fragment;
+    // RETUNE_WEIGHT = 0.5 × Relay weight of the depth.
+    retune: { reward: r(25, 2), weightMult: 0.5 },
+    expectedMs: [118_000, 209_000], // session base → base, median (depth 1) .. p80 (depth 3)
   },
   {
     id: 'M1_CONTR_02',
@@ -93,21 +135,30 @@ export const CONTRACTS_M1: readonly ContractDef[] = [
       itemId: DATA_CORE_ITEM_ID,
       distFromShaft: [30, 45], // DATACORE_DIST
       guards: 3,
+      guardGroups: ['ddh'], // balans v1.2 / LD §10
     },
     depths: [2],
     reward: { 2: r(40, 3) }, // REWARD_DATACORE: 40 kr + 3 Copper
-    weight: 1,
-    expectedMs: [60_000, 110_000],
+    // Depth-2 weight 2 (balans-m1.md §5.1, question 5 – approved by GD): more reliable Copper.
+    weight: { 2: 2 },
+    expectedMs: [128_000, 180_000], // session base → base, median .. p80
   },
   {
     id: 'M1_CONTR_03',
     textId: 'M1_CONTR_03',
     issuer: 'BASE',
-    objective: { type: 'killContractEnemies', count: 6, distFromShaft: [12, 20] }, // CLEARPATH_ENEMY_DIST
-    depths: [1, 2],
-    reward: { 1: r(0, 0, 1), 2: r(25, 0, 1) }, // REWARD_CLEARPATH: 1 Med-Patch / 25 kr + 1 Med-Patch
-    weight: 1,
-    expectedMs: [45_000, 80_000],
+    objective: {
+      type: 'killContractEnemies',
+      count: 6,
+      distFromShaft: [12, 20], // CLEARPATH_ENEMY_DIST
+      // balans v1.2 / LD §10: g1 and g3 = sss + ddh, g2 = sss + dht
+      groups: { 1: ['sss', 'ddh'], 2: ['sss', 'dht'], 3: ['sss', 'ddh'] },
+    },
+    depths: [1, 2, 3],
+    // REWARD_CLEARPATH: 1 Med-Patch / 25 kr + 1 Med-Patch / 40 kr + 1 Med-Patch (depth 1/2/3)
+    reward: { 1: r(0, 0, 1), 2: r(25, 0, 1), 3: r(40, 0, 1) },
+    weight: { 1: 1, 2: 1, 3: 1 },
+    expectedMs: [108_000, 180_000], // session base → base, median (depth 1) .. p80 (depth 3)
   },
 ];
 

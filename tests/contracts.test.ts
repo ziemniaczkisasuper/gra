@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { Rng } from '../src/core/rng';
+import { createGame } from '../src/core/game';
+import { GameRng, Rng } from '../src/core/rng';
 import {
   CONTRACT_DEFS,
+  CONTRACT_ENEMY_LOOT,
+  CONTRACT_KRPM_CAP,
   CONTRACT_SLOTS_BASE,
   CONTRACT_SLOTS_EXCHANGE,
   CONTRACTS_M1,
@@ -15,10 +18,12 @@ import {
   allowedDepths,
   contractPool,
   contractSpawns,
+  contractTextParams,
   createContractsState,
   deserializeContracts,
   freshProgress,
   loadContracts,
+  pickTwoStage,
   refillBoard,
   serializeContracts,
 } from '../src/contracts/board';
@@ -29,6 +34,16 @@ import type {
   ContractOutputEvent,
   ContractsState,
 } from '../src/contracts/types';
+import {
+  CONTRACTS_SECTION,
+  contractsRng,
+  getContracts,
+  isUnrolled,
+  NEW_GAME_BOARD_CONTEXT,
+  refillContracts,
+  setContracts,
+} from '../src/contracts/save';
+import { gameFromSave, getSaveSection, parseSave, saveSectionNames, snapshot } from '../src/save';
 import { SaveError } from '../src/save/schema';
 
 const CTX1: BoardContext = { unlockedStops: [], solvedVariants: [] };
@@ -65,17 +80,21 @@ describe('contracts: definitions match mechaniki-m1 §2.4 / §2.16', () => {
     expect(CONTRACT_SLOTS_EXCHANGE).toBe(1);
   });
 
-  it('Restore Relay: depths 1–3, 40 kr, retune 40 kr ×0.5', () => {
+  it('Restore Relay: depths 1–3, 35 kr, retune 25 kr + 2 Copper ×0.5 (balans-m1 v1.1 §5)', () => {
     const d = CONTRACT_DEFS.M1_CONTR_01;
     expect(d.depths).toEqual([1, 2, 3]);
     expect(d.objective).toEqual({ type: 'solveTerminal' });
     for (const depth of [1, 2, 3] as Depth[])
-      expect(d.reward[depth]).toEqual({ credits: 40, copper: 0, medPatches: 0 });
+      expect(d.reward[depth]).toEqual({ credits: 35, copper: 0, medPatches: 0 });
     expect(d.retune).toEqual({
-      reward: { credits: 40, copper: 0, medPatches: 0 },
+      reward: { credits: 25, copper: 2, medPatches: 0 },
       weightMult: 0.5,
     });
-    expect(d.weight).toBe(1);
+    expect(d.weight).toEqual({ 1: 1, 2: 1, 3: 1 });
+    expect(CONTRACT_DEFS.M1_CONTR_02.weight).toEqual({ 2: 2 });
+    expect(CONTRACT_DEFS.M1_CONTR_03.weight).toEqual({ 1: 1, 2: 1, 3: 1 });
+    expect(CONTRACT_ENEMY_LOOT).toBe(0);
+    expect(CONTRACT_KRPM_CAP).toEqual({ 1: 20, 2: 48, 3: 90 });
     expect(GRID_FRAGMENT_PCT).toBe(10);
   });
 
@@ -87,16 +106,28 @@ describe('contracts: definitions match mechaniki-m1 §2.4 / §2.16', () => {
       itemId: DATA_CORE_ITEM_ID,
       distFromShaft: [30, 45],
       guards: 3,
+      guardGroups: ['ddh'],
     });
     expect(d.reward).toEqual({ 2: { credits: 40, copper: 3, medPatches: 0 } });
   });
 
-  it('Clear the Path: depths 1–2, 6 enemies 12–20 fields, 1 patch / 25 kr + 1 patch', () => {
+  it('Clear the Path: depths 1–3, 6 enemies 12–20 fields, g1/g3 sss+ddh, g2 sss+dht, rewards per depth', () => {
     const d = CONTRACT_DEFS.M1_CONTR_03;
-    expect(d.depths).toEqual([1, 2]);
-    expect(d.objective).toEqual({ type: 'killContractEnemies', count: 6, distFromShaft: [12, 20] });
+    expect(d.depths).toEqual([1, 2, 3]);
+    expect(d.objective).toEqual({
+      type: 'killContractEnemies',
+      count: 6,
+      distFromShaft: [12, 20],
+      groups: { 1: ['sss', 'ddh'], 2: ['sss', 'dht'], 3: ['sss', 'ddh'] },
+    });
     expect(d.reward[1]).toEqual({ credits: 0, copper: 0, medPatches: 1 });
     expect(d.reward[2]).toEqual({ credits: 25, copper: 0, medPatches: 1 });
+    expect(d.reward[3]).toEqual({ credits: 40, copper: 0, medPatches: 1 });
+    // every depth composition = 6 enemies
+    for (const dep of [1, 2, 3] as const)
+      expect(
+        (d.objective.type === 'killContractEnemies' ? d.objective.groups[dep] : [])!.join(''),
+      ).toHaveLength(6);
   });
 
   it('terminal variants: 3 / 3 / 2 in difficulty order (8 fragments)', () => {
@@ -139,48 +170,121 @@ describe('contracts: board rolling', () => {
     }
   });
 
-  it('pool weights: type weight split over its depths, retune ×0.5', () => {
+  it('pool weights: per (contract, depth) from data, no division, retune ×0.5', () => {
     const pool = contractPool(createContractsState(), CTX_ALL);
     const w = (id: ContractDefId, d: Depth) => pool.find((e) => e.defId === id && e.depth === d);
-    expect(w('M1_CONTR_01', 1)?.weight).toBeCloseTo(1 / 3);
-    expect(w('M1_CONTR_02', 2)?.weight).toBe(1);
-    expect(w('M1_CONTR_03', 1)?.weight).toBe(0.5);
+    expect(pool.map((e) => `${e.defId}@${e.depth}=${e.weight}`)).toEqual([
+      'M1_CONTR_01@1=1',
+      'M1_CONTR_03@1=1',
+      'M1_CONTR_01@2=1',
+      'M1_CONTR_02@2=2',
+      'M1_CONTR_03@2=1',
+      'M1_CONTR_01@3=1',
+      'M1_CONTR_03@3=1',
+    ]);
+    expect(w('M1_CONTR_03', 2)?.weight).toBe(1);
     const solved = { unlockedStops: [2, 3] as Depth[], solvedVariants: [...TERMINAL_VARIANTS[1]] };
     const pool2 = contractPool(createContractsState(), solved);
     const r1 = pool2.find((e) => e.defId === 'M1_CONTR_01' && e.depth === 1)!;
     const r2 = pool2.find((e) => e.defId === 'M1_CONTR_01' && e.depth === 2)!;
     expect(r1.retune).toBe(true);
-    expect(r1.weight).toBeCloseTo(0.5 / 3);
+    expect(r1.weight).toBe(0.5);
     expect(r2.retune).toBe(false);
-    expect(r2.weight).toBeCloseTo(1 / 3);
+    expect(r2.weight).toBe(1);
+    // Locked depths contribute nothing.
+    expect(contractPool(createContractsState(), CTX1).map((e) => e.depth)).toEqual([1, 1]);
   });
 
-  it('weighted pick follows the pool weights statistically', () => {
-    // All depths unlocked: first slot frequency ≈ type weight / total (1/3 each).
-    const counts: Record<string, number> = {};
-    const N = 6000;
+  it('two-stage draw: depth uniform among unlocked, then type by that depth weights', () => {
+    const N = 9000;
+    const byDepth: Record<number, number> = {};
+    const byPair: Record<string, number> = {};
     for (let seed = 0; seed < N; seed++) {
       const { state } = refillBoard(createContractsState(), new Rng(seed * 7919 + 1), CTX_ALL);
       const c = state.base[0]!;
-      counts[c.defId] = (counts[c.defId] ?? 0) + 1;
+      byDepth[c.depth] = (byDepth[c.depth] ?? 0) + 1;
+      byPair[`${c.defId}@${c.depth}`] = (byPair[`${c.defId}@${c.depth}`] ?? 0) + 1;
     }
-    for (const id of ['M1_CONTR_01', 'M1_CONTR_02', 'M1_CONTR_03'])
-      expect(counts[id]! / N).toBeGreaterThan(0.29);
-    // Retune halves Relay's share: with all variants solved Relay ≈ 0.5 / 2.5 = 20%.
-    const allSolved: BoardContext = {
-      unlockedStops: [2, 3],
-      solvedVariants: Object.values(TERMINAL_VARIANTS).flat(),
-    };
-    let relay = 0;
+    for (const d of [1, 2, 3]) expect(byDepth[d]! / N).toBeCloseTo(1 / 3, 1);
+    // depth 1: Relay/Clear 1:1; depth 2: Relay/Core/Clear 1:2:1; depth 3: Relay/Clear 1:1.
+    expect(byPair['M1_CONTR_01@1']! / byDepth[1]!).toBeCloseTo(1 / 2, 1);
+    expect(byPair['M1_CONTR_02@2']! / byDepth[2]!).toBeCloseTo(1 / 2, 1);
+    expect(byPair['M1_CONTR_03@2']! / byDepth[2]!).toBeCloseTo(1 / 4, 1);
+    expect(byPair['M1_CONTR_01@3']! / byDepth[3]!).toBeCloseTo(1 / 2, 1);
+    expect(byPair['M1_CONTR_03@3']! / byDepth[3]!).toBeCloseTo(1 / 2, 1);
+
+    // Only depth 1 + 3 unlocked: never depth 2, depth split ~1/2.
+    const ctx13: BoardContext = { unlockedStops: [3], solvedVariants: [] };
+    let d3 = 0;
+    for (let seed = 0; seed < 4000; seed++) {
+      const c = refillBoard(createContractsState(), new Rng(seed + 17), ctx13).state.base[0]!;
+      expect(c.depth).not.toBe(2);
+      if (c.depth === 3) d3++;
+    }
+    expect(d3 / 4000).toBeCloseTo(1 / 2, 1);
+  });
+
+  it('retune halves Relay within its depth only', () => {
+    // Depth 1 exhausted: at depth 1 Relay(retune) 0.5 vs Clear 1 → 1/3; depth 2 unaffected (1/4).
+    const ctx: BoardContext = { unlockedStops: [2], solvedVariants: [...TERMINAL_VARIANTS[1]] };
+    const N = 9000;
+    let d1 = 0;
+    let relay1 = 0;
+    let d2 = 0;
+    let relay2 = 0;
     for (let seed = 0; seed < N; seed++) {
-      const { state } = refillBoard(createContractsState(), new Rng(seed * 104729 + 3), allSolved);
-      if (state.base[0]!.defId === 'M1_CONTR_01') {
-        relay++;
-        expect(state.base[0]!.retune).toBe(true);
+      const c = refillBoard(createContractsState(), new Rng(seed * 104729 + 3), ctx).state.base[0]!;
+      if (c.depth === 1) {
+        d1++;
+        if (c.defId === 'M1_CONTR_01') {
+          relay1++;
+          expect(c.retune).toBe(true);
+        }
+      } else {
+        d2++;
+        if (c.defId === 'M1_CONTR_01') {
+          relay2++;
+          expect(c.retune).toBe(false);
+        }
       }
     }
-    expect(relay / N).toBeGreaterThan(0.17);
-    expect(relay / N).toBeLessThan(0.23);
+    expect(relay1 / d1).toBeCloseTo(1 / 3, 1);
+    expect(relay2 / d2).toBeCloseTo(1 / 4, 1); // depth 2: Relay 1 / Core 2 / Clear 1
+  });
+
+  it('fallback: a depth with no free type is skipped in the depth draw', () => {
+    // Both depth-3 types (Relay@3, Clear@3) already taken → pool has no depth-3 entry.
+    const taken = { ...createContractsState(), base: [relay(3), clear(3), null] };
+    const pool = contractPool(taken, CTX_ALL);
+    expect(pool.some((e) => e.depth === 3)).toBe(false);
+    let d1 = 0;
+    for (let seed = 0; seed < 3000; seed++) {
+      const e = pickTwoStage(pool, new Rng(seed + 99))!;
+      expect(e).not.toBeNull();
+      expect(e.depth).not.toBe(3);
+      if (e.depth === 1) d1++;
+    }
+    expect(d1 / 3000).toBeCloseTo(1 / 2, 1);
+    // Refill with Relay@3 on the board: depth 3 still has Clear@3 → no fallback needed.
+    const c = refillBoard(board(relay(3), null), new Rng(5), {
+      unlockedStops: [3],
+      solvedVariants: [],
+    }).state.base[1]!;
+    expect(`${c.defId}@${c.depth}`).not.toBe('M1_CONTR_01@3');
+    // Nothing free anywhere → no pick (slot would stay empty).
+    const full = { ...createContractsState(), base: [relay(1), clear(1), null] };
+    expect(pickTwoStage(contractPool(full, CTX1), new Rng(1))).toBeNull();
+    expect(pickTwoStage([], new Rng(1))).toBeNull();
+  });
+
+  it('offer carries text id and {depth} param', () => {
+    const { events } = refillBoard(createContractsState(), new Rng(11), CTX_ALL);
+    for (const e of events) {
+      if (e.type !== 'contract:offered') throw new Error('unexpected');
+      expect(e.payload.textId).toBe(e.payload.defId);
+      expect(e.payload.textParams).toEqual({ depth: e.payload.depth });
+    }
+    expect(contractTextParams(relay(3))).toEqual({ depth: 3 });
   });
 
   it('uses only the passed Rng (advances it, no other randomness)', () => {
@@ -216,11 +320,30 @@ describe('contracts: board rolling', () => {
         itemId: DATA_CORE_ITEM_ID,
         distFromShaft: [30, 45],
         guards: 3,
+        guardGroups: ['ddh'],
+        enemyLoot: 0,
       },
-      { contractId: 3, kind: 'enemies', count: 6, distFromShaft: [12, 20] },
+      {
+        contractId: 3,
+        kind: 'enemies',
+        count: 6,
+        distFromShaft: [12, 20],
+        groups: ['sss', 'dht'],
+        enemyLoot: 0,
+      },
     ]);
     expect(contractSpawns(s, 1)).toEqual([]);
     expect(contractSpawns(board(relay(3)), 3)).toEqual([{ contractId: 1, kind: 'terminal' }]);
+    expect(contractSpawns(board(clear(3)), 3)).toEqual([
+      {
+        contractId: 3,
+        kind: 'enemies',
+        count: 6,
+        distFromShaft: [12, 20],
+        groups: ['sss', 'ddh'],
+        enemyLoot: 0,
+      },
+    ]);
   });
 });
 
@@ -337,7 +460,7 @@ describe('contracts: progress and completion', () => {
     ]);
     let done = r.events.find((e) => e.type === 'contract:completed')!;
     expect(done.payload).toMatchObject({
-      reward: { credits: 40 },
+      reward: { credits: 35, copper: 0, medPatches: 0 },
       gridFragmentVariant: 'M1_TERM_04',
       gridFragmentPct: 10,
     });
@@ -359,15 +482,16 @@ describe('contracts: progress and completion', () => {
     done = r.events.find((e) => e.type === 'contract:completed')!;
     expect(done.payload.gridFragmentVariant).toBeNull();
 
-    // retune → 40 kr, no fragment
+    // retune → 25 kr + 2 Copper, no fragment
     r = applyContractEvents(board(inst(1, 'M1_CONTR_01', 1, true)), [
       { type: 'terminalSolved', depth: 1, variant: 'M1_TERM_08', firstSolve: true },
       { type: 'evacuated' },
     ]);
     done = r.events.find((e) => e.type === 'contract:completed')!;
     expect(done.payload).toMatchObject({
-      reward: { credits: 40, copper: 0, medPatches: 0 },
+      reward: { credits: 25, copper: 2, medPatches: 0 },
       gridFragmentVariant: null,
+      gridFragmentPct: 0,
     });
 
     // first solve but died → no fragment credited by the contract
@@ -448,7 +572,8 @@ describe('contracts: save section', () => {
       mut((o) => (o.exchange = [{}])),
       mut((o) => (o.creditedVariants = ['NOPE'])),
       mut((o) => (base(o)[0]!.defId = 'M1_CONTR_99')),
-      mut((o) => (base(o)[0]!.depth = 3)), // Clear the Path has no depth 3
+      mut((o) => (base(o)[0]!.depth = 4)), // no depth 4
+      mut((o) => ((base(o)[1]!.defId = 'M1_CONTR_02'), (base(o)[1]!.id = 5))), // Data Core at depth 1
       mut((o) => (base(o)[0]!.id = 1)), // duplicate id
       mut((o) => (base(o)[0]!.retune = true)), // only Relay can be retune
       mut((o) => ((base(o)[0]!.progress as Record<string, unknown>).killed = 7)),
@@ -459,5 +584,78 @@ describe('contracts: save section', () => {
     ];
     for (const b of bad) expect(() => deserializeContracts(b)).toThrow(SaveError);
     expect(() => deserializeContracts(good)).not.toThrow();
+  });
+});
+
+describe('contracts: save v3 section registry (contracts/save.ts)', () => {
+  const D = { seed: 1 };
+  const rt = (g: Parameters<typeof snapshot>[0]) =>
+    parseSave(JSON.parse(JSON.stringify(snapshot(g, 1000))), D, { onWarn: () => {} });
+
+  it('registers the "contracts" section on import', () => {
+    expect(saveSectionNames()).toContain(CONTRACTS_SECTION);
+    expect(getSaveSection(CONTRACTS_SECTION)).toBeDefined();
+    expect(getSaveSection(CONTRACTS_SECTION)!.fresh()).toEqual(createContractsState());
+  });
+
+  it('stream("contracts") is an Rng usable by the board and independent of other streams', () => {
+    const g = createGame({ seed: 777 });
+    const rng = contractsRng(g);
+    expect(rng).toBeInstanceOf(Rng);
+    expect(rng).toBe(g.rng.stream('contracts'));
+    const before = g.rng.getStates().default;
+    refillBoard(createContractsState(), rng, CTX_ALL);
+    expect(g.rng.getStates().default).toBe(before);
+  });
+
+  it('new game = fresh board rolled from stream("contracts"), deterministic per seed', () => {
+    const g = gameFromSave(null, { seed: 4242 });
+    const board1 = getContracts(g);
+    expect(board1.base.every((c) => c !== null && c.depth === 1)).toBe(true);
+    const expected = refillBoard(
+      createContractsState(),
+      new GameRng(4242).stream('contracts'),
+      NEW_GAME_BOARD_CONTEXT,
+    ).state;
+    expect(board1).toEqual(expected);
+    expect(getContracts(gameFromSave(null, { seed: 4242 }))).toEqual(board1);
+  });
+
+  it('save without the section = fresh board', () => {
+    const g = gameFromSave(null, { seed: 9 });
+    const data = rt(g);
+    delete data[CONTRACTS_SECTION];
+    const loaded = gameFromSave(data);
+    expect(isUnrolled(getContracts(loaded))).toBe(false);
+    expect(getContracts(loaded).nextId).toBe(3);
+  });
+
+  it('round-trips through snapshot → parseSave → gameFromSave, incl. progress and rng stream', () => {
+    const g = gameFromSave(null, { seed: 31337 });
+    setContracts(g, board(clear(2), core()));
+    setContracts(
+      g,
+      applyContractEvents(getContracts(g), [
+        { type: 'contractEnemyKilled', contractId: 3 },
+        { type: 'itemPicked', itemId: DATA_CORE_ITEM_ID, contractId: 2 },
+      ]).state,
+    );
+    const data = rt(g);
+    expect((data[CONTRACTS_SECTION] as { v: number }).v).toBe(1);
+    const loaded = gameFromSave(data);
+    expect(getContracts(loaded)).toEqual(getContracts(g));
+    // The contracts stream continues identically after load.
+    const die = (s: Parameters<typeof getContracts>[0]) =>
+      applyContractEvent(getContracts(s), { type: 'died' }).state;
+    setContracts(g, { ...die(g), base: [null, null] });
+    setContracts(loaded, { ...die(loaded), base: [null, null] });
+    expect(refillContracts(loaded, CTX_ALL)).toEqual(refillContracts(g, CTX_ALL));
+  });
+
+  it('bad contracts section rejects the whole save with SaveError', () => {
+    const data = rt(gameFromSave(null, { seed: 5 })) as Record<string, unknown>;
+    const bad = { ...data, [CONTRACTS_SECTION]: { v: 99 } };
+    expect(() => parseSave(bad, D)).toThrow(SaveError);
+    expect(() => parseSave({ ...data, [CONTRACTS_SECTION]: 'x' }, D)).toThrow(SaveError);
   });
 });

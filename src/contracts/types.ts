@@ -1,6 +1,16 @@
-import type { ContractDefId, ContractReward, Depth } from '../data/contracts-m1';
+import type {
+  ContractDefId,
+  ContractReward,
+  ContractTextParams,
+  Depth,
+} from '../data/contracts-m1';
 
-export type { ContractDefId, ContractReward, Depth } from '../data/contracts-m1';
+export type {
+  ContractDefId,
+  ContractReward,
+  ContractTextParams,
+  Depth,
+} from '../data/contracts-m1';
 
 /** Board-unique contract instance id (also tags contract enemies / the Data Core in the level). */
 export type ContractId = number;
@@ -22,7 +32,7 @@ export interface ContractInstance {
   id: ContractId;
   defId: ContractDefId;
   depth: Depth;
-  /** Restore Relay rolled after all variants of its depth were solved (LD §3). */
+  /** Restore Relay rolled after all variants of its depth were solved (LD §3, confirmed). */
   retune: boolean;
   progress: ContractProgress;
 }
@@ -73,6 +83,9 @@ export interface ContractEvents {
     defId: ContractDefId;
     depth: Depth;
     retune: boolean;
+    /** Text id + params for the `{depth}` token (texts are not this module's job). */
+    textId: ContractDefId;
+    textParams: ContractTextParams;
   };
   /** Kill counter changed (HUD). */
   'contract:progress': { contractId: ContractId; current: number; required: number };
