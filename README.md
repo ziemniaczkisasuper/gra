@@ -29,7 +29,7 @@ Mapa: domyślnie arena 40×20; `?map=large` w adresie = druga mapa 60×30.
 | `input/` | `actions.ts` (`ActionState`, `InputSource`, `InputManager`, `toDir8`), `keyboard.ts` (klawiatura), `touch.ts` + `joystick.ts` (dotyk, Pointer Events) | **UI i Menu** (interfejs akcji: Silnik) |
 | `ui/` | `overlay.ts` – minimalny DOM: przycisk `||`, nakładka PAUSED + RESUME, eksport/import zapisu | **UI i Menu** |
 | `save/` | `schema.ts` (wersja, migracje, walidacja), `storage.ts` (localStorage), `codec.ts` (kod tekstowy), `files.ts` (plik .json) | Silnik |
-| `contracts/` | kontrakty BASE M1 (czysta logika): `types.ts`, `board.ts` (tablica 2 sloty, losowanie z przekazanego `Rng`, uzupełnianie w bazie, zapis `ContractsSave`), `progress.ts` (`applyContractEvent` → zdarzenia `contract:*`); dane w `data/contracts-m1.ts`, opis w `../kontrakty-m1.md` | **LUZ / Pracownik 2** (wpięcie: Silnik) |
+| `contracts/` | kontrakty BASE M1 (czysta logika): `types.ts`, `board.ts` (tablica 2 sloty, losowanie z przekazanego `Rng`, uzupełnianie w bazie, zapis `ContractsSave`), `progress.ts` (`applyContractEvent` → zdarzenia `contract:*`), `save.ts` (sekcja zapisu v3 `contracts`, rejestrowana przy imporcie; RNG `stream('contracts')`); dane w `data/contracts-m1.ts`, opis w `../kontrakty-m1.md` | **LUZ / Pracownik 2** (wpięcie: Silnik) |
 | `data/` | `style.ts` (**wszystkie kolory, znaki, font** – styl GRAF jeszcze niezatwierdzony), `mechanics-m0.ts` (cała tabela 1.14 z `design/mechaniki-m1.md`), `maps.ts`, `strings.ts` (teksty EN), `tiles.ts`, `game.ts` | Balans, GRAF, Lore |
 | `main.ts` | spięcie wszystkiego, auto-pauza, zapis | Silnik |
 
@@ -122,6 +122,16 @@ registerSaveSection<CombatSave>('combat', {
 - Wyzwalacz auto-pauzy D (trafienie + 2 s bez wejścia): `input.idleMs` jest gotowe; po trafieniu wywołajcie auto-pauzę
   (np. przez zdarzenie na busie – do dodania razem z walką).
 - Parametry tylko z `data/mechanics-m0.ts`, glify/kolory tylko z `data/style.ts` (`DUMMY_TELEGRAPH_GLYPH` itd.).
+
+## Kontrakty (LUZ) – wpięcie w Silnik (`src/integration/contracts.ts`)
+- `main.ts` → `installContracts(emit)` po `installCombat()`; import modułu rejestruje sekcję zapisu `contracts` (z `src/contracts/save.ts`)
+  przed wczytaniem zapisu. Losowanie tablicy: `state.rng.stream('contracts')` (stan w `rngState.contracts`).
+- Zdarzenia wyjściowe modułu (`contract:offered|progress|objectiveMet|objectiveLost|completed|failed`) → `bus.emit(e.type, e.payload)`.
+- Wejścia podpięte: walka `playerDied` → `{ type: 'died' }` (system fazy `world`, po walce).
+- **Jeszcze nie podpięte (brak systemów-źródeł):** `terminalSolved` (terminale), `itemPicked` / `itemLost` (przedmioty, plecak),
+  `contractEnemyKilled` (wrogowie z `contractId` z generatora poziomu), `evacuated` (winda/ewakuacja), `refillContractsAtBase()`
+  po powrocie do bazy (`ctx` z windy i terminali), `contractSpawns()` w generatorze poziomu. Gotowe funkcje: `feedContracts(state, inputs)`,
+  `refillContractsAtBase(state, ctx, emit)`.
 
 ## Punkty podpięcia – PROG / UI i Menu (`input/`, `ui/`)
 - Implementujcie `InputSource { poll(): Partial<ActionState>; reset(): void }` i dodajcie przez `input.add(...)` w `main.ts`.

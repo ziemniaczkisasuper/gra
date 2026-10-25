@@ -14,6 +14,7 @@ import { GlyphRenderer } from './render/glyph-renderer';
 import { renderScene } from './render/scene';
 import { getCombatHud, takeAutoPauseRequest } from './combat/combat';
 import { installCombat } from './combat/install';
+import { installContracts } from './integration/contracts'; // also registers the 'contracts' save section
 import { renderCombatOverlay } from './combat/overlay';
 import {
   decodeSaveCode,
@@ -65,6 +66,8 @@ const fromSave = (s: SaveData | null): GameState => {
 let state: GameState = fromSave(readSave(store));
 
 installCombat(); // PROG / Gameplay: combat systems (combat/README.md)
+// LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
+installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
 
 const input = new InputManager();
 const keyboard = new KeyboardSource(window, undefined, undefined, window); // blur → release keys
