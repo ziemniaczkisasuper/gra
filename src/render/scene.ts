@@ -1,5 +1,4 @@
 import type { GameState } from '../core/game';
-import { CAMERA_SAFE_MARGINS } from '../data/camera';
 import { TILE_GLYPHS, UNKNOWN_GLYPH } from '../data/style';
 import type { Entity } from '../entities/entity';
 import { computeCamera } from './camera';
@@ -25,8 +24,7 @@ export function renderScene(r: GlyphRenderer, state: GameState, alpha: number): 
     r.rows,
     state.map.width,
     state.map.height,
-    CAMERA_SAFE_MARGINS,
-  );
+  ); // margins = current UI insets (setCameraInsets), shared with the combat overlay
   // Snap the camera to whole device pixels to avoid shimmering glyphs.
   const camPxX = Math.round(cam.x * r.cellW);
   const camPxY = Math.round(cam.y * r.cellH);

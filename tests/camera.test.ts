@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { cameraAxis, computeCamera, pickFontPx } from '../src/render/camera';
-import { CAMERA_SAFE_MARGINS, CAMERA_SAFE_TOP_ROWS } from '../src/data/camera';
+import {
+  cameraAxis,
+  cameraMargins,
+  computeCamera,
+  defaultCameraInsets,
+  insetsToMargins,
+  lineHeightFor,
+  pickFontPx,
+  resetCameraInsets,
+  setCameraInsets,
+  setCameraRect,
+  setCameraViewport,
+  setDefaultCameraInsets,
+} from '../src/render/camera';
 import { visualPos } from '../src/render/scene';
 import { createEntity } from '../src/entities/entity';
 
@@ -12,14 +24,19 @@ const fit = {
   minPortrait: { cols: 17, rows: 21 },
 };
 
+const M0 = { top: 0, bottom: 0, left: 0, right: 0 };
+
 describe('camera', () => {
   it('centres on the target and clamps to map edges', () => {
     expect(computeCamera({ x: 30, y: 15 }, 20, 10, 60, 30)).toEqual({ x: 20, y: 10 });
     expect(computeCamera({ x: 1, y: 1 }, 20, 10, 60, 30)).toEqual({ x: 0, y: 0 });
     expect(computeCamera({ x: 59, y: 29 }, 20, 10, 60, 30)).toEqual({ x: 40, y: 20 });
   });
-  it('centres a map smaller than the view', () => {
-    expect(computeCamera({ x: 5, y: 5 }, 100, 50, 60, 30)).toEqual({ x: -20, y: -10 });
+  it('a map smaller than the view: centred horizontally, top-aligned vertically', () => {
+    expect(computeCamera({ x: 5, y: 5 }, 100, 50, 60, 30, M0)).toEqual({ x: -20, y: -0 });
+    // with margins: below the top margin, centred between left/right margins
+    const M = { top: 4, bottom: 6, left: 2, right: 0 };
+    expect(computeCamera({ x: 5, y: 5 }, 100, 50, 60, 30, M)).toEqual({ x: -21, y: -4 });
   });
   it('font: preferred on PC, min 16 px on a small phone', () => {
     expect(pickFontPx(1920, 1080, fit)).toBe(18);
@@ -40,11 +57,6 @@ describe('camera safe margins (HUD band)', () => {
   const M = { top: 2, bottom: 0, left: 0, right: 0 };
   // Player cell row r occupies [r, r+1); on screen: [r - cam, r + 1 - cam).
   const screenTop = (row: number, cam: number) => row - cam;
-
-  it('default config keeps 3 rows free at the top (pause button height)', () => {
-    expect(CAMERA_SAFE_TOP_ROWS).toBe(3);
-    expect(CAMERA_SAFE_MARGINS.top).toBe(3);
-  });
 
   it('player next to the top wall is pushed below the HUD band (scrolls past the map)', () => {
     // 40x20 arena, view 17 rows: player on row 1 (just under the outer wall).
@@ -76,5 +88,79 @@ describe('camera safe margins (HUD band)', () => {
     expect(39 - cx).toBeLessThanOrEqual(31 - 3 + 1e-9);
     const tiny = cameraAxis(0.5, 2.5, 20, 2, 2);
     expect(0 - tiny).toBeCloseTo(2);
+  });
+});
+
+describe('camera insets in px (setCameraInsets)', () => {
+  it('defaults: touch = 16+48+safe top, 16+72+16+safe bottom; desktop = 0', () => {
+    expect(defaultCameraInsets(false)).toEqual({ top: 0, bottom: 0, left: 0, right: 0 });
+    expect(defaultCameraInsets(true, { top: 20, bottom: 34, left: 0, right: 0 })).toEqual({
+      top: 84,
+      bottom: 138,
+      left: 0,
+      right: 0,
+    });
+  });
+
+  it('rows = ceil(px / cellH), columns = ceil(px / cellW)', () => {
+    expect(insetsToMargins({ top: 64, bottom: 104, left: 10, right: 0 }, 11, 22, 667)).toEqual({
+      top: 3,
+      bottom: 5,
+      left: 1,
+      right: 0,
+    });
+    expect(insetsToMargins({ top: 44, bottom: 0, left: 0, right: 0 }, 11, 22, 667).top).toBe(2);
+  });
+
+  it('extra rectangle (M1 hint bar, bottom centre) extends the bottom margin', () => {
+    const m = insetsToMargins({ top: 0, bottom: 40, left: 0, right: 0 }, 10, 20, 400, [
+      { x: 100, y: 300, width: 200, height: 30 },
+    ]);
+    expect(m.bottom).toBe(5); // 400 - 300 = 100 px → 5 rows
+  });
+
+  it('module state: UI report wins over defaults; computeCamera uses it by default', () => {
+    resetCameraInsets();
+    setCameraViewport(10, 20, 400);
+    setDefaultCameraInsets({ top: 40, bottom: 0, left: 0, right: 0 });
+    expect(cameraMargins().top).toBe(2);
+    setCameraInsets({ top: 61, bottom: 0, left: 0, right: 0 });
+    setDefaultCameraInsets({ top: 0, bottom: 0, left: 0, right: 0 }); // ignored now
+    expect(cameraMargins().top).toBe(4);
+    setCameraRect('hintBar', { x: 0, y: 360, width: 50, height: 20 });
+    expect(cameraMargins().bottom).toBe(2);
+    // player on row 1 of a 40×20 map, view 20 rows: drawn below the 4-row band
+    const c = computeCamera({ x: 3.5, y: 1.5 }, 31, 20, 40, 20);
+    expect(1 - c.y).toBeGreaterThanOrEqual(4);
+    setCameraRect('hintBar', null);
+    resetCameraInsets();
+  });
+});
+
+describe('font fit: ≥ 17 rows at 568×320, minimum views elsewhere', () => {
+  const view = (w: number, h: number) => {
+    const lh = lineHeightFor(h);
+    const px = pickFontPx(w, h, { ...fit, lineHeight: lh });
+    const cellH = Math.round(px * lh);
+    const cellW = Math.round(px * 0.6);
+    return { lh, px, rows: h / cellH, cols: w / cellW };
+  };
+  it('568×320: line height 1.15, ≥ 17 rows, ≥ 31 cols', () => {
+    const v = view(568, 320);
+    expect(v.lh).toBe(1.15);
+    expect(v.rows).toBeGreaterThanOrEqual(17);
+    expect(v.cols).toBeGreaterThanOrEqual(31);
+  });
+  it('667×375: line height 1.2, ≥ 17 rows, ≥ 31 cols', () => {
+    const v = view(667, 375);
+    expect(v.lh).toBe(1.2);
+    expect(v.rows).toBeGreaterThanOrEqual(17);
+    expect(v.cols).toBeGreaterThanOrEqual(31);
+  });
+  it('375×667 (portrait): line height 1.2, ≥ 21 rows, ≥ 17 cols', () => {
+    const v = view(375, 667);
+    expect(v.lh).toBe(1.2);
+    expect(v.rows).toBeGreaterThanOrEqual(21);
+    expect(v.cols).toBeGreaterThanOrEqual(17);
   });
 });

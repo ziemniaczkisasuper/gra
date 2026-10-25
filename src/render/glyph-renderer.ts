@@ -24,7 +24,7 @@ export class GlyphRenderer {
     readonly canvas: HTMLCanvasElement,
     private readonly background: string,
     private readonly fontFamily: string,
-    private readonly lineHeight: number,
+    private lineHeight: number,
   ) {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D not supported');
@@ -45,7 +45,8 @@ export class GlyphRenderer {
   }
 
   /** Call on start, on resize/orientation change and after the web font loads. */
-  resize(cssW: number, cssH: number, dpr: number, fontPx: number): void {
+  resize(cssW: number, cssH: number, dpr: number, fontPx: number, lineHeight?: number): void {
+    if (lineHeight !== undefined) this.lineHeight = lineHeight;
     this.dpr = Math.max(1, Math.min(dpr || 1, 3));
     this.fontPx = fontPx;
     this.width = Math.max(1, Math.round(cssW * this.dpr));

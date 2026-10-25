@@ -71,7 +71,16 @@ Zasada: `core/game.ts`, `world/`, `entities/`, `combat/`, `save/schema|codec` **
 ## Kamera
 - Kamera centruje gracza w obszarze wolnym od marginesów, przycina się do krawędzi mapy, ale **margines wygrywa**:
   komórka `@` nigdy nie wchodzi w pas HUD; przy krawędzi mapy kamera przewija się poza mapę (puste pola).
-- Parametry: `src/data/camera.ts` – `CAMERA_SAFE_TOP_ROWS = 3` i `CAMERA_SAFE_MARGINS { top, bottom, left, right }` (w komórkach).
+- Marginesy w **pikselach** (CSS px od krawędzi widoku), przeliczane na komórki: wiersze = `ceil(px / cellH)`,
+  kolumny = `ceil(px / cellW)`. API dla UI (`render/camera.ts`):
+  - `setCameraInsets({ top, bottom, left, right })` – zmierzone prostokąty kontrolek; od tej chwili domyślne nie działają.
+  - `setCameraRect(id, rect | null)` – dodatkowy prostokąt `{ x, y, width, height }` (np. `'hintBar'`, pasek podpowiedzi M1
+    na dole, QA R28); w dolnej połowie poszerza margines dolny, w górnej – górny.
+  - Domyślnie (`defaultCameraInsets`): dotyk `top = 16+48+safe-area-top`, `bottom = 16+72+16+safe-area-bottom`; desktop 0.
+    `main.ts` przelicza je przy resize i przy pojawieniu/zniknięciu kontrolek dotykowych.
+- Mała mapa: w pionie wyrównana do **góry** obszaru użytkowego (pod górnym marginesem, sterowanie.md §5), w poziomie wyśrodkowana.
+- Wysokość linii: `lineHeightFor(h)` – 1.15 przy wysokości widoku < 360 px (568×320 mieści ≥ 17 wierszy), inaczej 1.2.
+  `GlyphRenderer.resize(w, h, dpr, fontPx, lineHeight)`.
 - Funkcje czyste (`cameraAxis`, `computeCamera` w `render/camera.ts`), testy w `tests/camera.test.ts`.
 
 ## Losowość – nazwane strumienie (`core/rng.ts`)

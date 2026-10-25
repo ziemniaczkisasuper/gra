@@ -9,7 +9,13 @@ import { FONT, PALETTE } from './data/style';
 import { InputManager } from './input/actions';
 import { KeyboardSource } from './input/keyboard';
 import { TouchSource } from './input/touch';
-import { pickFontPx } from './render/camera';
+import {
+  defaultCameraInsets,
+  lineHeightFor,
+  pickFontPx,
+  setCameraViewport,
+  setDefaultCameraInsets,
+} from './render/camera';
 import { GlyphRenderer } from './render/glyph-renderer';
 import { renderScene } from './render/scene';
 import {
@@ -234,18 +240,49 @@ window.addEventListener('blur', () => autoPause());
 window.addEventListener('pagehide', () => autoPause());
 document.addEventListener('freeze', () => autoPause());
 
+/** CSS env(safe-area-inset-*) in px (probe element; 0 where unsupported). */
+function readSafeArea(): { top: number; bottom: number; left: number; right: number } {
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:fixed;visibility:hidden;pointer-events:none;' +
+    'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) ' +
+    'env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+  document.body.append(probe);
+  const cs = getComputedStyle(probe);
+  const n = (v: string) => parseFloat(v) || 0;
+  const r = {
+    top: n(cs.paddingTop),
+    right: n(cs.paddingRight),
+    bottom: n(cs.paddingBottom),
+    left: n(cs.paddingLeft),
+  };
+  probe.remove();
+  return r;
+}
+
 function fit(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
+  const lineHeight = lineHeightFor(h); // 1.15 below 360 px (568×320 shows ≥ 17 rows), else 1.2
   const px = pickFontPx(w, h, {
     preferredPx: FONT.preferredPx,
     minPx: FONT.minPx,
-    lineHeight: FONT.lineHeight,
+    lineHeight,
     minLandscape: M0.VIEW_MIN_LANDSCAPE,
     minPortrait: M0.VIEW_MIN_PORTRAIT,
   });
-  renderer.resize(w, h, window.devicePixelRatio, px);
+  renderer.resize(w, h, window.devicePixelRatio, px, lineHeight);
+  // Camera margins in px → cells (render/camera.ts). UI may report measured rectangles with
+  // setCameraInsets / setCameraRect('hintBar', …); until then the default touch / desktop layout.
+  setCameraViewport(renderer.cellW / renderer.dpr, renderer.cellH / renderer.dpr, h);
+  updateCameraDefaults();
 }
+function updateCameraDefaults(): void {
+  setDefaultCameraInsets(defaultCameraInsets(ui.touch?.visible ?? false, readSafeArea()));
+}
+// Touch controls appear on the first touch / hide on a key (ui/touch-controls.ts): follow them.
+for (const ev of ['pointerdown', 'keydown'] as const)
+  window.addEventListener(ev, () => queueMicrotask(updateCameraDefaults), true);
 let lastSize = `${window.innerWidth}x${window.innerHeight}`;
 window.addEventListener('resize', () => {
   const size = `${window.innerWidth}x${window.innerHeight}`;
