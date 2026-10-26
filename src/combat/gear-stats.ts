@@ -4,7 +4,13 @@
 import type { GameState } from '../core/game';
 import type { Rng } from '../core/rng';
 import type { CombatConfig } from '../data/combat-m0';
-import { ITEM_DEFS, GEAR_SLOTS } from '../data/inventory-m1';
+import {
+  ITEM_DEFS,
+  GEAR_SLOTS,
+  ISSUE_POLE_ITEM_ID,
+  ISSUE_SUIT_ITEM_ID,
+} from '../data/inventory-m1';
+import { getNetworkProgress, issueMk2Grant } from '../progress/network';
 import { msToTicks } from '../data/mechanics-m0';
 import { getInventory, INVENTORY_SECTION, setInventory, useMedPatch } from '../inventory/inventory';
 import type { GearInfo, InventoryState } from '../inventory/types';
@@ -58,18 +64,24 @@ function affixSum(inv: InventoryState, id: string, cap: number | null): number {
   return Math.min(cap, Math.max(0, sum));
 }
 
-/** Issue Suit is 0. A rolled armour piece contributes its ARMOR_BASE, then Plated on armour and module. */
-export function equippedArmorValue(inv: InventoryState): number {
-  const base = inv.gear.armor?.gear?.base;
+/**
+ * Issue Suit is 0 until stop 2 (`issueArmor`, from `issueMk2Grant`).
+ * A rolled armour piece contributes its ARMOR_BASE, then Plated on armour and module.
+ */
+export function equippedArmorValue(inv: InventoryState, issueArmor = 0): number {
+  const piece = inv.gear.armor;
+  const base = piece?.gear?.base;
   const fromPiece = base?.id === 'ARMOR_BASE' ? base.value : 0;
-  return fromPiece + affixSum(inv, AFFIX_ARMOR, null);
+  const fromIssue = !base && piece?.itemId === ISSUE_SUIT_ITEM_ID ? issueArmor : 0;
+  return fromPiece + fromIssue + affixSum(inv, AFFIX_ARMOR, null);
 }
 
 /** Write `c.player.armor` from the equipped piece. No inventory section → leave the combat value alone. */
 export function syncPlayerArmor(state: GameState, player: { armor: number }): void {
   const inv = section(state);
   if (!inv) return;
-  player.armor = equippedArmorValue(inv);
+  const grant = issueMk2Grant(getNetworkProgress(state));
+  player.armor = equippedArmorValue(inv, grant?.suit.armor ?? 0);
 }
 
 export function equippedWeaponKind(state: GameState): 'melee' | 'ranged' {
@@ -94,7 +106,12 @@ export function weaponDamageBounds(
     kind === 'ranged'
       ? { min: cfg.RANGED_DMG_MIN, max: cfg.RANGED_DMG_MAX }
       : { min: cfg.PLAYER_DMG_MIN, max: cfg.PLAYER_DMG_MAX };
-  const base = section(state)?.gear.weapon?.gear?.base;
+  const weapon = section(state)?.gear.weapon;
+  const base = weapon?.gear?.base;
+  if (!base && kind === 'melee' && weapon?.itemId === ISSUE_POLE_ITEM_ID) {
+    const pole = issueMk2Grant(getNetworkProgress(state))?.pole;
+    if (pole) return { min: pole.dmgMin, max: pole.dmgMax };
+  }
   if (!base) return fallback;
   if (kind === 'melee' && base.id === 'WEAPON_MELEE_DMG')
     return { min: base.value, max: base.value };

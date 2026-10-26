@@ -3,8 +3,10 @@
 // (level-m1.md: gate `G`, fixed map ARENA_M1), not another generated floor.
 import { peekCombat, setCombatProfile, spawnEnemy } from '../combat/combat';
 import { spawnBoss } from '../combat/boss';
+import { contractsForLevel } from '../contracts/run';
 import { placePlayer, resetPlayerMoveMemory, type GameState } from '../core/game';
 import { setCell } from '../entities/entity';
+import { PROGRESS_SECTION, type NetworkProgress } from '../progress/network';
 import { ARENA_M1 } from '../world/levelgen/fixed-maps';
 import { generateLevel } from '../world/levelgen/generate';
 import { isEnemyGlyph } from '../world/levelgen/enemy-spawn';
@@ -80,6 +82,41 @@ function adoptMap(
   rememberShafts(state, ex);
 }
 
+const contractEnemies = new WeakMap<GameState, Map<number, number>>();
+const floorContracts = new WeakMap<GameState, Map<string, number>>();
+
+/** Contract id tagged on a spawned enemy, or null for pool enemies and boss drones. */
+export function contractEnemyId(state: GameState, enemyId: number): number | null {
+  return contractEnemies.get(state)?.get(enemyId) ?? null;
+}
+
+/** Data Core `§` placed for a contract. Null when the cell is an ordinary pickup. */
+export function floorContractId(state: GameState, x: number, y: number): number | null {
+  return floorContracts.get(state)?.get(`${x},${y}`) ?? null;
+}
+
+function clearContractTags(state: GameState): void {
+  contractEnemies.delete(state);
+  floorContracts.delete(state);
+}
+
+function rememberContractEnemy(state: GameState, enemyId: number, contractId: number): void {
+  let map = contractEnemies.get(state);
+  if (!map) {
+    map = new Map();
+    contractEnemies.set(state, map);
+  }
+  map.set(enemyId, contractId);
+}
+
+function storedProgress(state: GameState): NetworkProgress | null {
+  const raw = state.sections[PROGRESS_SECTION];
+  if (!raw || typeof raw !== 'object') return null;
+  const progress = raw as NetworkProgress;
+  if (!Array.isArray(progress.stops) || typeof progress.prologue !== 'boolean') return null;
+  return progress;
+}
+
 /** Generated floor. Enemy glyphs become floor; combat spawns the actors. */
 export function installGeneratedFloor(
   state: GameState,
@@ -87,7 +124,20 @@ export function installGeneratedFloor(
   depth: ZoneDepth,
   expSeed: number,
 ): void {
-  const level = generateLevel({ expSeed, depth });
+  const progress = storedProgress(state);
+  const prologue = depth === 1 && progress?.prologue === true && progress.prologueBuilt !== true;
+  const contracts = state.sections.contracts ? contractsForLevel(state, depth) : [];
+  const level = generateLevel({
+    expSeed,
+    depth,
+    prologue,
+    contracts,
+    solvedVariants: progress?.solved ?? [],
+  });
+  if (progress && prologue) {
+    progress.prologue = false;
+    progress.prologueBuilt = true;
+  }
   const rows = level.rows.map((row) =>
     [...row].map((ch) => (isEnemyGlyph(ch) ? '.' : ch)).join(''),
   );
@@ -96,10 +146,16 @@ export function installGeneratedFloor(
   ex.hiddenShaft = null;
   ex.arenaShaftOpen = false;
   ex.notices = [];
+  clearContractTags(state);
   adoptMap(state, ex, rows, level.entry, depth);
+  const cores = new Map<string, number>();
+  for (const obj of level.contractObjects) {
+    if (obj.contractId !== null) cores.set(`${obj.x},${obj.y}`, obj.contractId);
+  }
+  if (cores.size > 0) floorContracts.set(state, cores);
   for (const enemy of level.enemies) {
     if (!isZoneDepth(enemy.depth)) continue;
-    spawnEnemy(
+    const spawned = spawnEnemy(
       state,
       enemy.type,
       { x: enemy.x, y: enemy.y },
@@ -109,6 +165,7 @@ export function installGeneratedFloor(
         depth: enemy.depth,
       },
     );
+    if (enemy.contractId !== null) rememberContractEnemy(state, spawned.id, enemy.contractId);
   }
   // Spawning does not add `<`. Rescan in case a shaft glyph survived.
   rememberShafts(state, ex);
@@ -130,6 +187,7 @@ export function installArena(state: GameState, ex: ExpeditionState): void {
   ex.hiddenShaft = hidden;
   ex.arenaShaftOpen = false;
   ex.notices = [];
+  clearContractTags(state);
   adoptMap(state, ex, rows, entry, 3);
   if (boss) spawnBoss(state, boss);
 }

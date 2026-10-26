@@ -45,8 +45,10 @@ export function depthOfVariant(id: string): Depth | null {
 }
 
 /**
- * Persistent network progress. `riskExplainerSeen` is not here — another module owns that flag.
+ * Persistent network progress.
  * Fragment percent is derived (`gridPct`); the save stores the solved ids and the boss bit.
+ * `riskExplainerSeen` and the prologue flags live here so a v5 save can carry them without
+ * new required core fields. A missing flag on an older section loads as false / [].
  */
 export interface NetworkProgress {
   /** Variant ids in first-solve order. A variant is stored once. */
@@ -58,6 +60,17 @@ export interface NetworkProgress {
   bossFragment: boolean;
   /** `M1_BASE_17` already shown on a lift departure. Set by `announceMk2`. */
   mk2Announced: boolean;
+  /** First death with AT RISK already explained (`markSeen`). */
+  riskExplainerSeen: boolean;
+  /**
+   * The next generated depth-1 floor should be the prologue.
+   * True on a new game. Absent on a save from before this field → false.
+   */
+  prologue: boolean;
+  /** `generateLevel({ prologue: true })` already ran for this profile. */
+  prologueBuilt: boolean;
+  /** Hint steps already passed (`T01` …). Hints that are off still record these. */
+  tutSeen: string[];
 }
 
 export function createNetworkProgress(): NetworkProgress {
@@ -67,6 +80,10 @@ export function createNetworkProgress(): NetworkProgress {
     lights: 0,
     bossFragment: false,
     mk2Announced: false,
+    riskExplainerSeen: false,
+    prologue: true,
+    prologueBuilt: false,
+    tutSeen: [],
   };
 }
 
@@ -77,6 +94,10 @@ function copyProgress(p: NetworkProgress): NetworkProgress {
     lights: p.lights,
     bossFragment: p.bossFragment,
     mk2Announced: p.mk2Announced,
+    riskExplainerSeen: p.riskExplainerSeen,
+    prologue: p.prologue,
+    prologueBuilt: p.prologueBuilt,
+    tutSeen: [...p.tutSeen],
   };
 }
 

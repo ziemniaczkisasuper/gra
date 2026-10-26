@@ -245,6 +245,10 @@ function takeProgress(progress: NetworkProgress): NetworkProgress {
     lights: progress.lights,
     bossFragment: progress.bossFragment,
     mk2Announced: progress.mk2Announced,
+    riskExplainerSeen: progress.riskExplainerSeen,
+    prologue: progress.prologue,
+    prologueBuilt: progress.prologueBuilt,
+    tutSeen: [...progress.tutSeen],
   };
 }
 

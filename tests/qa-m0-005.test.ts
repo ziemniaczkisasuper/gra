@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EventBus, type GameEvents } from '../src/core/events';
 import { createSaveApi } from '../src/save/api';
 import { loadGame } from '../src/save/boot';
-import { snapshot } from '../src/save';
+import { SAVE_VERSION, snapshot } from '../src/save';
 import {
   BACKUP_INDEX_KEY,
   BACKUP_PREFIX,
@@ -17,7 +17,11 @@ import {
 } from '../src/save/storage';
 
 const quiet = { warn: () => {} };
-const v4 = JSON.stringify({ version: 4, savedAt: 1, player: { x: 30, y: 15 } });
+const newerSave = JSON.stringify({
+  version: SAVE_VERSION + 1,
+  savedAt: 1,
+  player: { x: 30, y: 15 },
+});
 
 function setup(raw: string | null, now = 1000) {
   const store = memoryStore();
@@ -33,26 +37,26 @@ function setup(raw: string | null, now = 1000) {
 
 describe('QA-M0-005: newer / corrupt save protection', () => {
   it('newer version: backup copy, event, auto-save blocked, original kept', () => {
-    const s = setup(v4);
+    const s = setup(newerSave);
     expect(s.failure).toEqual({ reason: 'newerVersion', backupKey: `${BACKUP_PREFIX}1000` });
     expect(s.events).toEqual([{ reason: 'newerVersion', backupKey: `${BACKUP_PREFIX}1000` }]);
-    expect(s.store.getItem(`${BACKUP_PREFIX}1000`)).toBe(v4);
+    expect(s.store.getItem(`${BACKUP_PREFIX}1000`)).toBe(newerSave);
     expect(saveWritesBlocked(s.store)).toBe('newerVersion');
     // what the first auto-pause does (main.ts save())
     expect(writeSave(s.store, snapshot(s.state, 2000))).toBe(false);
-    expect(s.store.getItem(STORAGE_KEY)).toBe(v4);
+    expect(s.store.getItem(STORAGE_KEY)).toBe(newerSave);
     // exports still work, but do not overwrite the slot
     s.api.snoozeExportReminder();
-    expect(s.store.getItem(STORAGE_KEY)).toBe(v4);
+    expect(s.store.getItem(STORAGE_KEY)).toBe(newerSave);
   });
 
   it("player's decision (resolveLoadFailure) unblocks and saves the new game", () => {
-    const s = setup(v4);
+    const s = setup(newerSave);
     s.api.resolveLoadFailure();
     expect(saveWritesBlocked(s.store)).toBeNull();
     expect(s.api.getLoadFailure()).toBeNull();
-    expect(JSON.parse(s.store.getItem(STORAGE_KEY)!).version).toBe(3);
-    expect(s.store.getItem(`${BACKUP_PREFIX}1000`)).toBe(v4); // copy stays
+    expect(JSON.parse(s.store.getItem(STORAGE_KEY)!).version).toBe(SAVE_VERSION);
+    expect(s.store.getItem(`${BACKUP_PREFIX}1000`)).toBe(newerSave); // copy stays
   });
 
   it.each([

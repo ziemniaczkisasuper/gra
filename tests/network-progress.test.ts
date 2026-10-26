@@ -208,8 +208,10 @@ describe('progress save section', () => {
     const raw = JSON.parse(JSON.stringify(snapshot(game, 1_700_000_000_000))) as {
       progress: Record<string, unknown>;
     };
-    expect(raw.progress).not.toHaveProperty('riskExplainerSeen');
-    expect(JSON.stringify(raw)).not.toContain('riskExplainerSeen');
+    expect(raw.progress.riskExplainerSeen).toBe(false);
+    expect(raw.progress.prologue).toBe(true);
+    expect(raw.progress.prologueBuilt).toBe(false);
+    expect(raw.progress.tutSeen).toEqual([]);
 
     const loaded = gameFromSave(parseSave(raw, { seed: DEFAULT_SEED }));
     expect(getNetworkProgress(loaded)).toEqual(progress);
@@ -219,13 +221,23 @@ describe('progress save section', () => {
     expect(getNetworkProgress(loaded).mk2Announced).toBe(true);
   });
 
-  it('drops riskExplainerSeen and rejects a bad section', () => {
+  it('keeps riskExplainerSeen and rejects a bad section', () => {
     const saved = serializeNetworkProgress(solveVariant(createNetworkProgress(), 'M1_TERM_04'));
-    const dirty = { ...saved, riskExplainerSeen: true };
+    const dirty = { ...saved, riskExplainerSeen: true, prologue: false };
     const back = deserializeNetworkProgress(dirty);
-    expect(back).not.toHaveProperty('riskExplainerSeen');
-    expect(serializeNetworkProgress(back)).not.toHaveProperty('riskExplainerSeen');
+    expect(back.riskExplainerSeen).toBe(true);
+    expect(back.prologue).toBe(false);
+    expect(serializeNetworkProgress(back).riskExplainerSeen).toBe(true);
     expect(back.solved).toEqual(['M1_TERM_04']);
+    const legacy = { ...saved };
+    delete (legacy as { riskExplainerSeen?: boolean }).riskExplainerSeen;
+    delete (legacy as { prologue?: boolean }).prologue;
+    delete (legacy as { prologueBuilt?: boolean }).prologueBuilt;
+    delete (legacy as { tutSeen?: string[] }).tutSeen;
+    const old = deserializeNetworkProgress(legacy);
+    expect(old.riskExplainerSeen).toBe(false);
+    expect(old.prologue).toBe(false);
+    expect(old.tutSeen).toEqual([]);
 
     expect(() => deserializeNetworkProgress({ ...saved, solved: ['M1_TERM_NOPE'] })).toThrow(
       SaveError,

@@ -30,7 +30,12 @@ import {
 import { AwayHitTracker } from './core/away';
 import { installCombat } from './combat/install';
 import './contracts/save'; // registers the 'contracts' save section BEFORE loadGame()/gameFromSave()
+import './inventory/save'; // registers 'inventory' before loadGame()
+import './progress/save'; // registers 'progress' before loadGame()
+import './expedition/save'; // registers 'expedition' before loadGame()
 import { installContracts } from './integration/contracts';
+import { installM1Loop, noteExpeditionFrame, syncInventoryHud } from './integration/m1-loop';
+import { attachM1Ui } from './integration/m1-ui';
 import { applyCombatParams, parseCombatParams } from './integration/combat-url';
 import { renderCombatOverlay } from './combat/overlay';
 import {
@@ -92,7 +97,7 @@ const bus = new EventBus<GameEvents>();
 // Test map: arena 40x20 by default, ?map=large for the 60x30 map.
 const mapParam = new URLSearchParams(location.search).get('map');
 const mapRows = MAPS[(mapParam && mapParam in MAPS ? mapParam : DEFAULT_MAP) as MapId];
-// Save v3: seed, tick, optional mode, rng streams, player + module sections (save/sections.ts).
+// Save v5: seed, tick, mode, rng streams, player + module sections (save/sections.ts).
 // No stored save → startNewGame() in mode 'base' (menu-hub, no ticks). A save restores its mode
 // (absent on older saves = 'zone') and, in a zone, the exact tick.
 // QA-M0-005: a save that cannot be loaded is copied to a backup key; a newer-version save is
@@ -176,8 +181,8 @@ installCombat((type, payload) => {
 }); // PROG / Gameplay: combat systems (combat/README.md)
 // LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
 installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
-// TODO(base, M1): after evacuation / death reprint call refillContractsAtBase(state, ctx, emit)
-// from integration/contracts.ts (ctx = lift stops + solved variants). M0 has no base yet.
+installM1Loop((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
+let syncM1: (() => void) | null = null;
 
 const input = new InputManager();
 const away = new AwayHitTracker(); // QA-M0-006
@@ -209,6 +214,7 @@ const loop = new GameLoop({
     const hit = peekCombat(state)?.events.some((e) => e.type === 'playerHit') ?? false;
     // Unpaused dt, including 'lift'. A descent confirm pauses the loop, so these freeze too.
     advanceExpedition(state, dt, actions, { playerDamaged: hit });
+    noteExpeditionFrame(state);
     for (const event of drainExpeditionEvents(state)) forwardExpedition(event);
     if (takeSimPause(state)) {
       input.reset();
@@ -249,6 +255,8 @@ const loop = new GameLoop({
     renderCombatOverlay(renderer, state, alpha, { fallbackHud: false }); // HP is in the DOM HUD
     const hp = getCombatHud(state);
     ui.hud.setHp(hp.hp, hp.maxHp);
+    syncInventoryHud(ui.hud, state);
+    syncM1?.();
     syncExpedition();
   },
   requestFrame: (cb) => requestAnimationFrame(cb),
@@ -355,6 +363,15 @@ const descentConfirm = mountDescentConfirm(uiRoot, {
   },
 });
 const evacOverlay = mountEvacOverlay(uiRoot);
+const m1Ui = attachM1Ui({
+  root: uiRoot,
+  getState: () => state,
+  loop,
+  toast: (message) => ui.toast(message),
+  showText: (pages) => ui.showText(pages),
+  checkExportReminder: () => saveApi.checkExportReminder(),
+});
+syncM1 = () => m1Ui.sync();
 
 function syncExpedition(): void {
   liftRide.sync(state);

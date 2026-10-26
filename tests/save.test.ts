@@ -57,7 +57,7 @@ describe('save v3: localStorage round-trip', () => {
     const s = memoryStore();
     writeSave(s, sample);
     expect(STORAGE_KEY).toMatch(/v\d+$/);
-    expect(s.getItem(STORAGE_KEY)).toContain('"version":3');
+    expect(s.getItem(STORAGE_KEY)).toContain(`"version":${SAVE_VERSION}`);
     expect(readSave(s)).toEqual(sample);
   });
 
@@ -100,14 +100,15 @@ describe('save v3: localStorage round-trip', () => {
 });
 
 describe('save: migrations', () => {
-  it('v2 → v3: tick 0, rngState from the seed, facing E, no sections', () => {
+  it('v2 → current: tick 0, rngState from the seed, facing E, mode zone, no sections', () => {
     const v2 = { version: 2, savedAt: 5, player: { x: 3, y: 4 }, seed: 99 };
     const out = parseSave(v2, D);
     expect(out).toEqual({
-      version: 3,
+      version: SAVE_VERSION,
       savedAt: 5,
       seed: 99,
       tick: 0,
+      mode: 'zone',
       rngState: { default: 99 },
       player: { x: 3, y: 4, facing: 'E' },
     });
@@ -116,13 +117,14 @@ describe('save: migrations', () => {
     expect(g.rng.next()).toBe(createGame({ seed: 99 }).rng.next());
   });
 
-  it('v1 → v3 (through v2): default seed added', () => {
+  it('v1 → current (through v2): default seed added, missing mode is zone', () => {
     const v1 = { version: 1, savedAt: 5, player: { x: 3, y: 4 } };
     expect(parseSave(v1, D)).toEqual({
-      version: 3,
+      version: SAVE_VERSION,
       savedAt: 5,
       seed: DEFAULT_SEED,
       tick: 0,
+      mode: 'zone',
       rngState: { default: DEFAULT_SEED },
       player: { x: 3, y: 4, facing: 'E' },
     });

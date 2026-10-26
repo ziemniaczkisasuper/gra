@@ -4,8 +4,13 @@ import { getSaveSection, CORE_SAVE_KEYS } from './sections';
 
 export type { GameMode };
 
-/** Current save schema version. Bump + add a migration when the shape changes. */
-export const SAVE_VERSION = 3;
+/**
+ * Current save schema version. Bump + add a migration when the shape changes.
+ * v4 stamps `mode` (missing → `'zone'`, a mode already written is kept).
+ * v5 keeps module sections opaque. `riskExplainerSeen` and prologue flags live
+ * inside the progress section, not as new required core fields.
+ */
+export const SAVE_VERSION = 5;
 
 /** Compass facing stored in saves (entity facing {x,y} ↔ string, see save/index.ts). */
 export type Facing = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
@@ -87,6 +92,8 @@ export interface SaveDefaults {
 /**
  * Migrations: key = version FROM which the function upgrades (to key + 1).
  * v1 (early M0 draft) had no seed. v2 had no tick / rngState / facing.
+ * v3 → v4 adds `mode` when the field is absent. v4 → v5 is a version stamp;
+ * inventory, contracts, combat, progress, and expedition stay opaque blobs.
  */
 export const MIGRATIONS: Record<number, (raw: Raw, defaults: SaveDefaults) => Raw> = {
   1: (raw, d) => ({ ...raw, version: 2, seed: d.seed }),
@@ -97,6 +104,12 @@ export const MIGRATIONS: Record<number, (raw: Raw, defaults: SaveDefaults) => Ra
     rngState: freshRngStates(typeof raw.seed === 'number' ? raw.seed : 0),
     player: { ...(isObj(raw.player) ? raw.player : {}), facing: 'E' },
   }),
+  3: (raw) => ({
+    ...raw,
+    version: 4,
+    mode: isGameMode(raw.mode) ? raw.mode : 'zone',
+  }),
+  4: (raw) => ({ ...raw, version: 5 }),
 };
 
 export const isObj = (v: unknown): v is Raw =>

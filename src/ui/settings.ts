@@ -126,6 +126,37 @@ export function setAskBeforeDeeper(on: boolean, store: Storage | null = safeStor
   }
 }
 
+// ---- Hints (M1_TUT_SETTING). Default ON. Off hides the bar and does not freeze the prologue.
+const HINTS_KEY = 'gra.ui.hints';
+/** Used only when storage is missing (node tests, private mode). */
+let hintsMemory: boolean | null = null;
+
+/**
+ * Whether the hint bar is shown and tutorial steps may freeze the world.
+ * A stored `'0'` or `'1'` wins. An absent key is ON.
+ */
+export function hintsEnabled(store: Storage | null = safeStorage()): boolean {
+  if (!store) return hintsMemory ?? true;
+  try {
+    const v = store.getItem(HINTS_KEY);
+    if (v === '0') return false;
+    if (v === '1') return true;
+  } catch {
+    return hintsMemory ?? true;
+  }
+  return true;
+}
+
+/** Persist the hint toggle. Writes storage when it is available. */
+export function setHintsEnabled(on: boolean, store: Storage | null = safeStorage()): void {
+  hintsMemory = on;
+  try {
+    store?.setItem(HINTS_KEY, on ? '1' : '0');
+  } catch {
+    hintsMemory = on;
+  }
+}
+
 // ---- Reduce motion (graf/styl-ascii.md §6; mechaniki 1.7): no blinking / pulsing / shake.
 const RM_KEY = 'gra.ui.reduceMotion';
 const RM_QUERY = '(prefers-reduced-motion: reduce)';

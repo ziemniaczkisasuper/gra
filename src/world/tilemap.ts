@@ -27,6 +27,15 @@ export class TileMap {
     return this.tiles[y]![x]!;
   }
 
+  /** Replace one cell. `ch` must be a single code point. Outside the map is a no-op. */
+  setTile(x: number, y: number, ch: string): boolean {
+    if (x < 0 || y < 0 || x >= this.width || y >= this.height) return false;
+    if ([...ch].length !== 1) return false;
+    const row = this.tiles[y]!;
+    this.tiles[y] = row.slice(0, x) + ch + row.slice(x + 1);
+    return true;
+  }
+
   isSolid(x: number, y: number): boolean {
     return this.solid.has(this.tile(x, y));
   }
