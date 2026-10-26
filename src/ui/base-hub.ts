@@ -2,7 +2,7 @@
 // Shortcuts 1–5. One unlocked stop: LIFT calls onLift immediately (the host departs).
 // The background is the fixed BASE_M1 art. This screen does not generate a level.
 import './m1-screens.css';
-import { BASE_M1 } from '../world/levelgen';
+import { fillBaseMap } from './base-map';
 import { el } from './dom';
 import { M1_COPY, M1_UI_COPY } from './m1-copy';
 
@@ -19,6 +19,8 @@ export interface BaseHubData {
   medPatchMax: number;
   /** Unlocked lift stops. 1 → LIFT departs with no stop list on this screen. */
   stops: number;
+  /** Lights Above the Base, 0–3. Omitted means the cables stay dark. */
+  lights?: number;
   orders: readonly BaseOrderView[];
 }
 
@@ -62,7 +64,7 @@ export function mountBaseHub(root: HTMLElement, opts: BaseHubOptions): BaseHub {
   const screen = el('section', { className: 'm1-screen' });
   screen.dataset.screen = 'base';
   const panel = el('div', { className: 'm1-panel' });
-  const map = el('pre', { className: 'm1-base-map', textContent: BASE_M1.join('\n') });
+  const map = el('pre', { className: 'm1-base-map' });
   map.setAttribute('aria-hidden', 'true');
   screen.append(panel);
   root.append(screen);
@@ -75,6 +77,7 @@ export function mountBaseHub(root: HTMLElement, opts: BaseHubOptions): BaseHub {
 
   const render = () => {
     const data = opts.getData();
+    fillBaseMap(map, data.lights ?? 0);
     const credits = el('span', { textContent: `CREDITS ${data.credits} cr` });
     credits.dataset.field = 'credits';
     const grid = el('span', { textContent: `GRID ${data.gridPct}%` });

@@ -579,6 +579,30 @@ describe('base hub', () => {
     expect(calls.orders).toBe(1);
     hub.destroy();
 
+    const lit = root();
+    const litHub = mountBaseHub(lit, {
+      getData: () => ({
+        credits: 0,
+        gridPct: 0,
+        medPatches: 0,
+        medPatchMax: 6,
+        stops: 1,
+        lights: 1,
+        orders: [],
+      }),
+      onLift: () => {},
+      onOrders: () => {},
+      onExchange: () => {},
+      onLocker: () => {},
+      onGear: () => {},
+      onSettings: () => {},
+    });
+    const cables = lit.querySelectorAll('.m1-cable-on');
+    expect(cables.length).toBeGreaterThan(0);
+    expect([...cables].every((node) => node.textContent === '-')).toBe(true);
+    expect(lit.querySelector('pre')?.dataset.lights).toBe('1');
+    litHub.destroy();
+
     const css = new TextDecoder().decode(readFileSync('src/ui/m1-screens.css'));
     expect(css.includes('position: fixed')).toBe(false);
     expect(css.includes('position:fixed')).toBe(false);

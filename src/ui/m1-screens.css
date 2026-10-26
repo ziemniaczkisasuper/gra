@@ -162,6 +162,25 @@
   font-weight: 700;
 }
 
+.m1-chip {
+  display: inline-block;
+  position: relative;
+  z-index: 1;
+  margin: 8px 8px 0 0;
+  padding: 6px 10px;
+  border: 1px solid #8b98a5;
+  background: #12161c;
+  color: #e7e1d5;
+}
+
+.m1-cable-on {
+  color: #ffe14d;
+}
+
+.m1-floor-lit {
+  color: #8b98a5;
+}
+
 .m1-base-map {
   position: absolute;
   top: 16px;
