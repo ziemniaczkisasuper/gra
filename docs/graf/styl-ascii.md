@@ -1,5 +1,5 @@
 # Styl ASCII – zestaw znaków i paleta M0/M1
-Autor: [GRA][GRAF] Concept i Styl, 25.10.2026. Status: **ZATWIERDZONY** przez Game Directora (v1.2, 25.10.2026; v1.3 tylko nazwa drona). v1.1 (25.10.2026): dopisana sekcja 9 – odpowiedzi dla DESIGN / Mechaniki. v1.2 (25.10.2026): nazwy rzadkości wg Dialogów i Lore, wróg `c` z M0 (sekcja 10). v1.3: dron = Buddy Drone. v1.4: okno terminala Power Lines (sekcja 11), ZATWIERDZONE przez GD 25.10.2026. v1.5: odpowiedzi dla Level Design (sekcja 12). v1.6: odpowiedzi dla Assety i Animacja, kolor paneli #121821 (sekcja 13).
+Autor: [GRA][GRAF] Concept i Styl, 25.10.2026. Status: **ZATWIERDZONY** przez Game Directora (v1.2, 25.10.2026; v1.3 tylko nazwa drona). v1.1 (25.10.2026): dopisana sekcja 9 – odpowiedzi dla DESIGN / Mechaniki. v1.2 (25.10.2026): nazwy rzadkości wg Dialogów i Lore, wróg `c` z M0 (sekcja 10). v1.3: dron = Buddy Drone. v1.4: okno terminala Power Lines (sekcja 11), ZATWIERDZONE przez GD 25.10.2026. v1.5: odpowiedzi dla Level Design (sekcja 12). v1.6: odpowiedzi dla Assety i Animacja, kolor paneli #121821 (sekcja 13). v1.7: dwa efekty dopisane do sekcji 4 – zamach Issue Pole i ramka klawiszy samouczka; kolory wyłącznie z palety sekcji 3.
 Źródła: wizja-gry.md, fabula-reprint.md, plan-produkcji.md.
 
 ## 1. Zasady nadrzędne
@@ -115,6 +115,10 @@ W ekwipunku i sklepie rzadkość ma też znacznik tekstowy niezależny od koloru
 | Ostrzeżenie przed atakiem wroga (nad wrogiem, ~0,4–0,6 s przed ciosem) | `!` | `#FFE14D` bold |
 | Trafienie | znak trafionego miga na biało przez 1 klatkę | – |
 | Gracz otrzymuje obrażenia | aureola gracza miga na `#FF5FC8` | – |
+| Zamach Issue Pole (`fx_player_pole_swing`) | kreski łuku `-` `\|` `/` `\` : 8 komórek, zasięg 2 pola, około 90° | `#BDEBFF` (strzał gracza), gaśnięcie `#56606B` (tory). Bez magenty |
+| Ramka klawiszy samouczka (`ui_tutorial_key_frame`) | krzyż przy `@`: `↑ ← ↓ →` albo `[W] [A] [S] [D]` | ramka `#8B98A5` (ściana), tekst `#C9D1D9`, tło hint to `#0B0F14` przy 90% krycia |
+
+Czasy, fazy i warianty tych dwóch efektów są w `assety-m1.md` (§3a zamach, §10b ramka). Nie wprowadzają koloru spoza palety z sekcji 3.
 
 ### Baza
 | Co | Znak | Kolor |
