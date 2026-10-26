@@ -1,0 +1,293 @@
+/* Power Lines window (ui-m1.md §5 layout B, styl-ascii.md §11).
+   Colours are the UI custom properties from data/style.ts. No hex literals.
+   Author `display` would otherwise beat the UA `[hidden]` rule. */
+.term-screen [hidden] {
+  display: none !important;
+}
+
+.term-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--ui-bg) 70%, transparent);
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.term-window {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  max-height: 100%;
+  background: var(--ui-panel-bg);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-frame);
+  font-family: var(--ui-font);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.term-columns {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+}
+
+.term-grid {
+  --term-cell: 28px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.term-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.term-cell {
+  position: relative;
+  width: var(--term-cell);
+  height: var(--term-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: var(--ui-frame);
+  font-size: min(18px, calc(var(--term-cell) * 0.5));
+  line-height: 1;
+}
+
+.term-glyph {
+  pointer-events: none;
+}
+
+.term-letter {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  font-size: max(11px, calc(var(--term-cell) * 0.45));
+  font-weight: 400;
+  color: var(--ui-frame);
+  pointer-events: none;
+}
+
+.term-cell-empty {
+  color: var(--ui-frame);
+  opacity: 0.45;
+}
+
+.term-cell-source {
+  background: var(--ui-warning);
+  color: var(--ui-bg);
+  font-weight: 700;
+}
+
+.term-cell-cable,
+.term-cell-ground {
+  color: var(--ui-frame);
+  font-weight: 700;
+}
+
+.term-cell-cable.term-powered {
+  color: var(--ui-warning);
+}
+
+.term-cell-junction {
+  color: var(--ui-text);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--ui-frame);
+}
+
+.term-cell-consumer {
+  color: var(--ui-text);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--ui-frame);
+}
+
+.term-cell-consumer.term-lit {
+  background: var(--ui-accent);
+  color: var(--ui-bg);
+}
+
+.term-cell-consumer.term-lit .term-letter {
+  color: var(--ui-bg);
+}
+
+.term-cell-consumer.term-dark {
+  box-shadow: inset 0 0 0 1px var(--ui-text);
+  outline: 1px dashed var(--ui-frame);
+  outline-offset: -3px;
+}
+
+.term-cell-consumer.term-burned {
+  background: var(--ui-danger);
+  color: var(--ui-bg);
+}
+
+.term-cell-consumer.term-burned .term-letter {
+  color: var(--ui-bg);
+}
+
+.term-cell-fuse {
+  color: var(--ui-warning);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px var(--ui-warning);
+}
+
+.term-cell-fault {
+  background: var(--ui-danger);
+  color: var(--ui-bg);
+}
+
+.term-cell-ring {
+  background: color-mix(in srgb, var(--ui-danger) 35%, var(--ui-bg));
+  color: var(--ui-danger);
+}
+
+.term-switch {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--ui-frame);
+  border: 1px solid var(--ui-warning);
+  font: inherit;
+  font-weight: 700;
+  font-size: min(18px, calc(var(--term-cell) * 0.5));
+  line-height: 1;
+  cursor: pointer;
+}
+
+.term-switch-on {
+  color: var(--ui-warning);
+}
+
+.term-switch-cursor {
+  outline: 1px solid var(--ui-text-strong);
+  outline-offset: 1px;
+}
+
+.term-panel {
+  width: 288px;
+  max-width: 46vw;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 8px 0;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.term-header,
+.term-name,
+.term-context,
+.term-status,
+.term-help {
+  margin: 0;
+}
+
+.term-header,
+.term-name {
+  color: var(--ui-text-strong);
+  font-weight: 700;
+}
+
+.term-consumers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.term-consumer {
+  font-variant-numeric: tabular-nums;
+}
+
+.term-status {
+  min-height: 2.5em;
+  color: var(--ui-warning);
+}
+
+.term-status-win {
+  color: var(--ui-accent);
+}
+
+.term-help {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.term-help-line {
+  margin: 0;
+}
+
+.term-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.term-actions button {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--ui-control-bg);
+  color: var(--ui-text-strong);
+  border: 1px solid var(--ui-frame);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.term-actions button:disabled {
+  color: var(--ui-frame);
+  cursor: default;
+}
+
+.term-rotate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+  max-width: 36em;
+}
+
+.term-rotate p {
+  margin: 0;
+  color: var(--ui-text-strong);
+}
+
+.term-rotate button,
+.term-help button {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--ui-control-bg);
+  color: var(--ui-text-strong);
+  border: 1px solid var(--ui-frame);
+  font: inherit;
+  font-weight: 700;
+}
