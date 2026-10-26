@@ -1,6 +1,7 @@
 import type { GameState } from '../core/game';
-import { TILE_GLYPHS, UNKNOWN_GLYPH } from '../data/style';
+import { PALETTE, TILE_GLYPHS, UI_GLYPHS, UNKNOWN_GLYPH } from '../data/style';
 import type { Entity } from '../entities/entity';
+import type { Dir8 } from '../input/actions';
 import { computeCamera } from './camera';
 import { drawFx } from './fx-layer';
 import type { GlyphRenderer } from './glyph-renderer';
@@ -16,8 +17,20 @@ export function visualPos(e: Entity, tick: number, alpha: number): { x: number; 
   return { x: e.fromX + (e.x - e.fromX) * t, y: e.fromY + (e.y - e.fromY) * t };
 }
 
-/** Draws the world (read-only access to state). */
-export function renderScene(r: GlyphRenderer, state: GameState, alpha: number): void {
+/** Chevron one cell from the player, same sector order as the touch stick marks. */
+function aimMark(aim: Dir8): { ch: string; fg: string; bold: boolean } {
+  const sector = Math.round(Math.atan2(aim.y, aim.x) / (Math.PI / 4));
+  const i = ((sector % 8) + 8) % 8;
+  return { ch: UI_GLYPHS.stickMarks[i] ?? '>', fg: PALETTE.playerShot, bold: true };
+}
+
+/** Draws the world (read-only access to state). `aim` draws the direction marker when set. */
+export function renderScene(
+  r: GlyphRenderer,
+  state: GameState,
+  alpha: number,
+  aim: Dir8 | null = null,
+): void {
   const pv = visualPos(state.player, state.tick, alpha);
   // Camera follows the player's cell centre, keeping it out of the HUD safe margins.
   const cam = computeCamera(
@@ -47,5 +60,8 @@ export function renderScene(r: GlyphRenderer, state: GameState, alpha: number): 
     r.draw(e.glyph, v.x * r.cellW - camPxX, v.y * r.cellH - camPxY);
   for (const e of state.entities) drawAt(e, visualPos(e, state.tick, alpha));
   drawAt(state.player, pv);
+  if (aim) {
+    r.draw(aimMark(aim), (pv.x + aim.x) * r.cellW - camPxX, (pv.y + aim.y) * r.cellH - camPxY);
+  }
   drawFx(r, state, camPxX, camPxY); // FX layer (render/fx-layer.ts) over the world
 }

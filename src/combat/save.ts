@@ -1,7 +1,7 @@
-// Combat save section 'combat' (save v3, save/sections.ts) – PROG / Gameplay.
+// Combat save section 'combat' (save v4, save/sections.ts) – PROG / Gameplay.
 // Registered at module top level; imported by combat/install.ts so it exists before main.ts loads.
 //
-// What is saved (CombatSave v3, JSON; v1 → v2 → v3 are migrated on load): everything the combat simulation needs to continue
+// What is saved (CombatSave v4, JSON; v1 → v2 → v3 → v4 are migrated on load): everything the combat simulation needs to continue
 // tick-exact after an auto-pause save – HP, AI states, timers, frozen target cells, carries,
 // and the engine counters of combat actors (moveCooldown / attackWindup / attackCooldown – the
 // engine saves only the player's cell and facing). NOT saved:
@@ -9,6 +9,7 @@
 //   - profile and depth: PROG / Silnik calls setCombatProfile() right after gameFromSave.
 //   - the drone's distance map: recomputed from the map (pure) on load.
 //   - cosmetics: floating numbers, strike '*', telegraph 'x' markers (rebuilt every tick).
+//   - player projectiles (v0.6): in-flight shots are dropped on load.
 //   - entity ids: they are not stable between runs → enemies are an ordered list (= AI order),
 //     references to enemies are list indexes.
 import type { GameState } from '../core/game';
@@ -21,6 +22,7 @@ import {
 } from '../data/combat-m0';
 import { COMBAT_STYLE } from '../data/style';
 import { createEntity, setCell, type Entity } from '../entities/entity';
+import type { Dir8 } from '../input/actions';
 import { SaveError } from '../save/schema';
 import { registerSaveSection } from '../save/sections';
 import {
@@ -47,7 +49,7 @@ import type {
   PlayerHitInfo,
 } from './state';
 
-export const COMBAT_SAVE_VERSION = 3;
+export const COMBAT_SAVE_VERSION = 4;
 
 /** Engine counters of an actor (whole ticks). */
 export interface CountersSave {
@@ -65,9 +67,9 @@ export interface PlayerCombatSave extends CountersSave {
   atkCarry: number;
   moveCarry: number;
   spawn: Cell;
-  /** Pending blow: target = index into `enemies`; v3: n + part index = a boss part
-   *  (n = enemies.length); null = tap at `aim`. */
-  attack: { target: number | null; aim: Cell } | null;
+  /** v4 pending swing or shot. `aim` exists only on a v3 migration (dir is derived in
+   *  applyCombat from the restored player cell). Projectiles are not saved. */
+  attack: { dir: Cell; aim?: Cell } | null;
   atkQueued: boolean;
   /** §2.6 queued bump target (index into `enemies`). */
   queuedTarget: number | null;
@@ -187,7 +189,7 @@ export function serializeCombat(state: GameState): CombatSave | typeof EMPTY_COM
       atkCarry: p.atkCarry,
       moveCarry: p.moveCarry,
       spawn: cell(p.spawn),
-      attack: p.attack ? { target: index(p.attack.targetId), aim: cell(p.attack.aim) } : null,
+      attack: p.attack ? { dir: cell(p.attack.dir) } : null,
       atkQueued: p.atkQueued,
       queuedTarget: index(p.queuedTargetId),
       prevAttack: p.prevAttack,
@@ -334,6 +336,34 @@ function dirOf(v: unknown, path: string): Cell {
   if (Math.abs(d.x) > 1 || Math.abs(d.y) > 1) fail(path);
   return d;
 }
+
+/** v4 attack, or a v3 migration that still carries `aim` and no `dir`. */
+function playerAttackOf(pa: Obj | null): { dir: Cell; aim?: Cell } | null {
+  if (!pa) return null;
+  const aim = pa.aim === undefined ? undefined : cellOf(pa.aim, 'player.attack.aim');
+  if (pa.dir === undefined) {
+    if (!aim) fail('player.attack.dir');
+    return { dir: { x: 0, y: 0 }, aim };
+  }
+  const dir = dirOf(pa.dir, 'player.attack.dir');
+  if (dir.x === 0 && dir.y === 0 && !aim) fail('player.attack.dir');
+  return aim ? { dir, aim } : { dir };
+}
+
+/** Dir8 from a saved attack. `aim` (v3) is relative to the player cell already restored. */
+function savedAttackDir(
+  a: { dir: Cell; aim?: Cell },
+  player: { x: number; y: number },
+): Dir8 {
+  let x = a.dir.x;
+  let y = a.dir.y;
+  if (a.aim) {
+    x = Math.sign(a.aim.x - player.x);
+    y = Math.sign(a.aim.y - player.y);
+  }
+  if (x === 0 && y === 0) return { x: 1, y: 0 };
+  return { x: Math.sign(x) as Dir8['x'], y: Math.sign(y) as Dir8['y'] };
+}
 const orNull = <T>(v: unknown, f: (v: unknown) => T): T | null => (v === null ? null : f(v));
 function countersOf(o: Obj, path: string): CountersSave {
   return {
@@ -397,9 +427,31 @@ export function migrateCombatV2(o: Obj): Obj {
   return out;
 }
 
+/**
+ * v3 → v4 (pure, on a copy): the player blow no longer stores a target index. `target` is
+ * dropped. `aim` is kept so applyCombat can turn it into a Dir8 once the player cell exists.
+ * In-flight projectiles were never part of v3.
+ */
+export function migrateCombatV3(o: Obj): Obj {
+  const out: Obj = { ...o, v: 4 };
+  if (o.empty === true) return out;
+  const p = obj(o.player, 'player');
+  let attack: unknown = null;
+  if (p.attack != null) {
+    const pa = obj(p.attack, 'player.attack');
+    const next: Obj = {};
+    if (pa.dir !== undefined) next.dir = pa.dir;
+    if (pa.aim !== undefined) next.aim = pa.aim;
+    attack = next;
+  }
+  out.player = { ...p, attack };
+  return out;
+}
+
 const SAVE_MIGRATIONS: Record<number, (o: Obj) => Obj> = {
   1: migrateCombatV1,
   2: migrateCombatV2,
+  3: migrateCombatV3,
 };
 
 export function deserializeCombat(raw: unknown): CombatSaveValue {
@@ -435,9 +487,7 @@ export function deserializeCombat(raw: unknown): CombatSaveValue {
     atkCarry: num(po, 'atkCarry', 'player'),
     moveCarry: num(po, 'moveCarry', 'player'),
     spawn: cellOf(po.spawn, 'player.spawn'),
-    attack: pa
-      ? { target: idx(pa.target, 'player.attack.target'), aim: cellOf(pa.aim, 'player.attack.aim') }
-      : null,
+    attack: playerAttackOf(pa),
     atkQueued: bool(po, 'atkQueued', 'player'),
     queuedTarget: idx(po.queuedTarget, 'player.queuedTarget'),
     prevAttack: bool(po, 'prevAttack', 'player'),
@@ -703,7 +753,9 @@ export function applyCombat(state: GameState, s: CombatSaveValue): void {
     moveTimeMod: ps.moveTimeMod,
     atkCarry: ps.atkCarry,
     moveCarry: ps.moveCarry,
-    attack: ps.attack ? { targetId: id(ps.attack.target), aim: cell(ps.attack.aim) } : null,
+    attack: ps.attack
+      ? { dir: savedAttackDir(ps.attack, state.player), aimCell: null, target: null }
+      : null,
     atkQueued: ps.atkQueued,
     queuedTargetId: id(ps.queuedTarget),
     prevAttack: ps.prevAttack,

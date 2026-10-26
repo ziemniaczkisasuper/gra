@@ -109,10 +109,10 @@ describe('config (v0.4)', () => {
     expect(COMBAT_STRINGS.hunterTitle).toBe('HUNTER 47');
     expect('hunterName' in COMBAT_STRINGS).toBe(false);
   });
-  it('profiles: M0 has regen and no bump, M1 has bump and no regen', () => {
+  it('profiles: M0 has regen and no bump, M1 has no bump and no regen', () => {
     expect(COMBAT_M0.BUMP_ATTACK_ENABLED).toBe(false);
     expect(COMBAT_M0.PLAYER_REGEN_PER_S).toBeGreaterThan(0);
-    expect(COMBAT_M1.BUMP_ATTACK_ENABLED).toBe(true);
+    expect(COMBAT_M1.BUMP_ATTACK_ENABLED).toBe(false);
     expect(COMBAT_M1.PLAYER_REGEN_PER_S).toBe(0);
   });
 });
@@ -218,10 +218,20 @@ describe('tick accumulator for speed affixes (§2.5)', () => {
   });
 });
 
-describe('bump attack (§2.6)', () => {
-  const m1: CombatInitOptions = { cfg: COMBAT_M1 };
+describe('bump attack (§2.6, flag on)', () => {
+  const m1: CombatInitOptions = { cfg: { ...COMBAT_M1, BUMP_ATTACK_ENABLED: true } };
 
-  it('M1: stepping into an enemy attacks it (100 ms wind-up), the player does not move', () => {
+  it('M1 default: walking into an enemy deals no damage', () => {
+    const s = room([[4, 3, 'E']], { cfg: COMBAT_M1 });
+    const { ec } = enemyAt(s, 4, 3);
+    const hp = ec.hp;
+    const ev = run(s, 5, act({ move: [1, 0] }));
+    expect(hits(ev)).toHaveLength(0);
+    expect(ec.hp).toBe(hp);
+    expect(s.player.x).toBe(3);
+  });
+
+  it('flag on: stepping into an enemy attacks it (100 ms wind-up), the player does not move', () => {
     const s = room([[4, 3, 'E']], m1);
     const { ec } = enemyAt(s, 4, 3);
     const ev = run(s, 3, (i) => (i === 0 ? act({ move: [1, 0] }) : act()));
@@ -230,7 +240,7 @@ describe('bump attack (§2.6)', () => {
     expect(s.player.x).toBe(3);
   });
 
-  it('M1: start of a bump attack sets no moveCooldown and sets facing', () => {
+  it('flag on: start of a bump attack sets no moveCooldown and sets facing', () => {
     const s = room([[3, 4, 'E']], m1);
     run(s, 1, act({ move: [0, 1] }));
     expect(getCombat(s).player.attack).not.toBeNull();
@@ -415,8 +425,17 @@ describe('combat RNG goes through combatRng(state) = stream("combat")', () => {
       b.rng.next();
       b.rng.stream('loot').next();
     }
-    const norm = (x: { tick: number; ev: CombatEvent }) =>
-      JSON.stringify({ ...x, ev: { ...x.ev, enemyId: 0 } });
+    const norm = (x: { tick: number; ev: CombatEvent }) => {
+      const ev = { ...x.ev } as CombatEvent & {
+        enemyId?: number;
+        entityId?: number;
+        hitIds?: number[];
+      };
+      if ('enemyId' in ev) ev.enemyId = 0;
+      if ('entityId' in ev) ev.entityId = 0;
+      if (ev.hitIds) ev.hitIds = ev.hitIds.map(() => 0);
+      return JSON.stringify({ tick: x.tick, ev });
+    };
     expect(run(a, 400, script).map(norm)).toEqual(run(b, 400, script).map(norm));
     expect(combatRng(a)).toBe(a.rng.stream('combat'));
   });

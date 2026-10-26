@@ -5,7 +5,8 @@ import { createGame, placePlayer, stepGame, type GameState } from '../src/core/g
 import { COMBAT, COMBAT_M1, RAIL_GUARDIAN as RG, enemyDiagMs } from '../src/data/combat-m0';
 import { ARENA_M1 } from '../src/data/arena-m1';
 import { emptyActions, type ActionState } from '../src/input/actions';
-import type { Entity } from '../src/entities/entity';
+import { createEntity, type Entity } from '../src/entities/entity';
+import { COMBAT_STYLE } from '../src/data/style';
 import {
   enemyMaxHp,
   enemyTicks,
@@ -225,7 +226,7 @@ describe('boss Rail Guardian', () => {
     expect(re.length).toBe(1);
     expect((re[0]!.ev as { textId: string }).textId).toBe('M1_RISK_01B');
   });
-  it('save v3 round-trip mid-charge continues identically; v2 saves migrate', () => {
+  it('save v4 round-trip mid-charge continues identically; v2 saves migrate', () => {
     const a = arena([5, 12]);
     boss(a).sinceCharge = RG.BOSS_CHARGE_EVERY - 1;
     boss(a).phase = 'chase';
@@ -252,5 +253,87 @@ describe('boss Rail Guardian', () => {
     expect(() =>
       gameFromSave(parseSaveText(JSON.stringify(old)), { mapRows: ARENA_M1.rows }),
     ).not.toThrow();
+  });
+  it('shock pulse damages the boss once (15–20) and does not apply Shock', () => {
+    const s = arena([10, 7]);
+    const b = boss(s);
+    placePlayer(s, b.x - 1, b.y);
+    b.phase = 'recover';
+    b.timer = 1000;
+    getCombat(s).player.hp = 1e6;
+    const ev = run(s, 6, { skill: 2 });
+    const hits = of(ev, 'bossHit') as Array<{ ev: Extract<CombatEvent, { type: 'bossHit' }> }>;
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.ev.source).toBe('pulse');
+    expect(hits[0]!.ev.dmg).toBeGreaterThanOrEqual(15);
+    expect(hits[0]!.ev.dmg).toBeLessThanOrEqual(20);
+    expect(b.phase).toBe('recover');
+    expect(of(ev, 'telegraphInterrupted')).toHaveLength(0);
+  });
+  it('a charge stopped by an enemy ends with no stun', () => {
+    const s = arena([5, 12]);
+    boss(s).sinceCharge = RG.BOSS_CHARGE_EVERY - 1;
+    boss(s).phase = 'chase';
+    let guard = 0;
+    while (boss(s).phase !== 'charging' && guard++ < 300) run(s, 1);
+    expect(boss(s).phase).toBe('charging');
+    const dir = boss(s).charge!.dir.x;
+    const x = boss(s).x;
+    const blocker = spawnEnemy(s, 'scrapper', { x: x + dir, y: boss(s).y });
+    const bec = ec(s, blocker);
+    bec.ai = 'attack';
+    bec.attack = { aim: { x: s.player.x, y: s.player.y }, target: 'player' };
+    blocker.attackWindup = 9999;
+    const ev = run(s, 4);
+    expect(of(ev, 'bossStunned')).toHaveLength(0);
+    expect(boss(s).phase).not.toBe('stunned');
+    expect(boss(s).phase).toBe('recover');
+    expect(boss(s).x).toBe(x);
+  });
+  it('the buddy drone does not stop a charge and is not a swing target', () => {
+    const s = arena([5, 12]);
+    boss(s).sinceCharge = RG.BOSS_CHARGE_EVERY - 1;
+    boss(s).phase = 'chase';
+    let guard = 0;
+    while (boss(s).phase !== 'charging' && guard++ < 300) run(s, 1);
+    const dir = boss(s).charge!.dir.x;
+    const x = boss(s).x;
+    const d = createEntity('buddyDrone', x + dir, boss(s).y, COMBAT_STYLE.drone);
+    d.solid = true;
+    s.entities.push(d);
+    run(s, 4);
+    expect(boss(s).x).not.toBe(x);
+    expect(boss(s).phase).not.toBe('recover');
+    expect(s.entities.some((e) => e === d)).toBe(true);
+
+    const w = arena([10, 7]);
+    const b = boss(w);
+    b.phase = 'swing';
+    b.timer = 1;
+    b.swing = [{ x: b.x - 1, y: b.y }];
+    const drone = createEntity('buddyDrone', b.x - 1, b.y, COMBAT_STYLE.drone);
+    drone.solid = true;
+    w.entities.push(drone);
+    placePlayer(w, b.x + 8, b.y);
+    const ev = run(w, 1);
+    expect(of(ev, 'playerHit')).toHaveLength(0);
+    expect(of(ev, 'droneHit')).toHaveLength(0);
+    expect(w.entities.some((e) => e === drone)).toBe(true);
+    expect(b.phase).toBe('recover');
+  });
+  it('player respawn resets the boss: full HP, summons gone, summon available', () => {
+    const s = arena([10, 7]);
+    run(s, 2);
+    boss(s).hp = 900;
+    boss(s).summoned = true;
+    spawnEnemy(s, 'panelDrone', { x: 10, y: 9 }, { summoned: true, depth: 3 });
+    getCombat(s).player.hp = 0;
+    let guard = 0;
+    let saw = false;
+    while (!saw && guard++ < 100) saw = run(s, 1).some((x) => x.ev.type === 'playerRespawned');
+    expect(saw).toBe(true);
+    expect(boss(s).hp).toBe(RG.BOSS_HP);
+    expect(boss(s).summoned).toBe(false);
+    expect([...getCombat(s).enemies.values()].some((e) => e.summoned)).toBe(false);
   });
 });

@@ -211,6 +211,10 @@ export const COMBAT_STYLE = {
   get dashTrail(): GlyphStyle {
     return glyph('·', 'player');
   },
+  /** v0.6 player shot. Not the enemy projectile ('•'). */
+  get playerProjectile(): GlyphStyle {
+    return glyph('-', 'player');
+  },
   /**
    * §2.11 boss Rail Guardian part (BOSS_GLYPHS.railGuardian, col/row in the 3×2 body).
    * normal = enemy on bossBg; telegraph = inverted like other wind-ups; flash = white cell;

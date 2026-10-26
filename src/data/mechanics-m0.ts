@@ -2,7 +2,8 @@
 // QA-M0-008: EVERY row of table 1.14 lives here (single data file); data/combat-m0.ts spreads M0
 // into the combat profiles (re-export) and holds only M1 values (table 2.16).
 // Times in ms (multiples of TICK_MS), converted with msToTicks().
-// Engine uses: TICK_MS, movement, INPUT_TAP_BUFFER_MS, DIAG_GRACE_MS, MOVE_DEADZONE, AUTOPAUSE_*.
+// Engine uses: TICK_MS, movement, INPUT_TAP_BUFFER_MS, DIAG_GRACE_MS, MOVE_DEADZONE,
+// AIM_DEADZONE, AUTOPAUSE_*.
 // Combat/AI values are implemented by Gameplay.
 
 export const TICK_MS = 50;
@@ -43,6 +44,8 @@ export const M0 = {
   /** Move vectors shorter than this are "no direction" (toDir8). Safety net against analog
    *  noise – the joystick dead zone itself (15%) is UI's. */
   MOVE_DEADZONE: 0.15,
+  /** Aim-stick vectors shorter than this are not a direction and do not fire (twin-stick). */
+  AIM_DEADZONE: 0.35,
 
   // Enemy (Scrap Crawler)
   ENEMY_HP: 80,

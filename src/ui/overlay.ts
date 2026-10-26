@@ -5,7 +5,7 @@ import type { TouchSource } from '../input/touch';
 import { createCountdown } from './countdown';
 import { button, el } from './dom';
 import { createHud, type Hud } from './hud';
-import type { UiSettings } from './settings';
+import { autoAimEnabled, setAutoAim, subscribeAutoAim, type UiSettings } from './settings';
 import { createTextWindow, type TextWindow } from './text-window';
 import { createTouchControls, type TouchControls } from './touch-controls';
 
@@ -51,6 +51,19 @@ export interface Ui {
 /** Keys that resume from the PAUSED menu. Esc/P arrive via the input layer (pause edge),
  * Enter is handled here. Space (attack) and any other key never resume. */
 export const MENU_RESUME_CODES: readonly string[] = ['Escape', 'KeyP', 'Enter', 'NumpadEnter'];
+
+/** Pause-menu Auto-aim toggle. Flips the setting only – does not resume. */
+function autoAimButton(): HTMLButtonElement {
+  const b = button(STRINGS.autoAimOff, () => setAutoAim(!autoAimEnabled()), 'auto-aim-toggle');
+  b.setAttribute('aria-label', STRINGS.autoAimOff);
+  subscribeAutoAim((on) => {
+    const label = on ? STRINGS.autoAimOn : STRINGS.autoAimOff;
+    b.textContent = label;
+    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  return b;
+}
 const ENTER_CODES = ['Enter', 'NumpadEnter'];
 
 /**
@@ -76,6 +89,7 @@ export function createUi(root: HTMLElement, h: UiHandlers, opts: UiOptions = {})
     sub,
     button(STRINGS.resume, h.onResume, 'resume'),
     el('div', { className: 'sub', textContent: STRINGS.resumeHint }),
+    autoAimButton(),
   ]);
   const saveTools = el('div', { className: 'panel-save' }, [
     el('div', { className: 'row' }, [

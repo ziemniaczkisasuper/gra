@@ -40,6 +40,23 @@ function run(
   return out;
 }
 
+/** Entity ids are a process-wide counter, so two runs share logic but not ids. */
+function scrubEvent(x: { tick: number; ev: CombatEvent }) {
+  const ev = { ...x.ev } as CombatEvent & {
+    enemyId?: number;
+    entityId?: number;
+    projectileId?: number;
+    hitIds?: number[];
+    hitId?: number | null;
+  };
+  if ('enemyId' in ev) ev.enemyId = 0;
+  if ('entityId' in ev) ev.entityId = 0;
+  if ('projectileId' in ev) ev.projectileId = 0;
+  if (ev.hitIds) ev.hitIds = ev.hitIds.map(() => 0);
+  if (typeof ev.hitId === 'number') ev.hitId = 0;
+  return { tick: x.tick, ev };
+}
+
 const enemyOf = (s: GameState) => {
   const c = getCombat(s);
   const e = s.entities.find((x) => c.enemies.has(x.id))!;
@@ -156,14 +173,18 @@ describe('player attack (§1.3)', () => {
     expect(s.player.y).toBe(4); // tick 3: attack cooldown, movement allowed
   });
 
-  it('holding ATK without a target does nothing; a tap swings at facing (whiff)', () => {
-    const s = room(10, 1);
-    run(s, 5, act({ attack: true })); // first tick is a press → one swing
-    const p = s.player;
-    const swing = p.attackCooldown;
-    expect(swing).toBeGreaterThan(0);
-    const ev = run(s, 20, act({ attack: true })); // still held, no target → no new swing
+  it('holding ATK swings at facing on the weapon cycle even with nothing in the arc', () => {
+    const s = room(10, 1, (rows) => {
+      rows[1] = rows[1]!.replace('E', '.');
+    });
+    const ev = run(s, 25, act({ attack: true }));
+    const swings = ev.filter((x) => x.ev.type === 'playerSwing');
+    expect(swings.map((x) => x.tick).slice(0, 3)).toEqual([2, 10, 18]);
+    expect(ev.filter((x) => x.ev.type === 'enemyHit')).toHaveLength(0);
     expect(ev.filter((x) => x.ev.type === 'playerWhiff')).toHaveLength(0);
+    const swing = swings[0]!.ev as Extract<CombatEvent, { type: 'playerSwing' }>;
+    expect(swing.dir).toEqual({ x: 1, y: 0 });
+    expect(swing.hitIds).toEqual([]);
   });
 
   it('ATK pressed in the last 150 ms of cooldown is queued', () => {
@@ -330,7 +351,7 @@ describe('death (§1.8, §1.9)', () => {
     ec.ai = 'attack';
     ec.attack = { aim: { x: 3, y: 3 }, target: 'player' };
     e.attackWindup = 3;
-    c.player.attack = { targetId: e.id, aim: { x: 4, y: 3 } };
+    c.player.attack = { dir: { x: 1, y: 0 }, aimCell: null, target: null };
     s.player.attackWindup = 3;
     run(s, 3);
     expect(ec.ai).toBe('dead');
@@ -344,8 +365,7 @@ describe('misc', () => {
       act({ attack: i % 3 === 0, move: i % 17 === 5 ? [0, 1] : undefined });
     const a = room(8, 4, undefined, 77);
     const b = room(8, 4, undefined, 77);
-    const norm = (x: { tick: number; ev: CombatEvent }) =>
-      JSON.stringify({ ...x, ev: { ...x.ev, enemyId: 0 } });
+    const norm = (x: { tick: number; ev: CombatEvent }) => JSON.stringify(scrubEvent(x));
     const ea = run(a, 300, script).map(norm);
     const eb = run(b, 300, script).map(norm);
     expect(ea).toEqual(eb);

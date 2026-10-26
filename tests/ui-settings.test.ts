@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createReduceMotion, loadUiSettings, type MediaLike } from '../src/ui/settings';
+import {
+  autoAimEnabled,
+  createReduceMotion,
+  loadUiSettings,
+  setAutoAim,
+  subscribeAutoAim,
+  type MediaLike,
+} from '../src/ui/settings';
 
 const memStore = (init: Record<string, string> = {}) => {
   const m = new Map(Object.entries(init));
@@ -89,5 +96,40 @@ describe('reduce motion setting', () => {
     expect(loadUiSettings('?lefty=1', store).leftHanded).toBe(true);
     expect(loadUiSettings('', store).leftHanded).toBe(true);
     expect(loadUiSettings('?lefty=0', store).leftHanded).toBe(false);
+  });
+});
+
+describe('auto-aim setting', () => {
+  it('defaults off, setAutoAim persists, and autoAimEnabled reads it back', () => {
+    const store = memStore();
+    expect(autoAimEnabled(store)).toBe(false);
+    const seen: boolean[] = [];
+    const stop = subscribeAutoAim((on) => seen.push(on));
+    setAutoAim(true, store);
+    expect(store.map.get('gra.ui.autoAim')).toBe('1');
+    expect(autoAimEnabled(store)).toBe(true);
+    expect(seen.at(-1)).toBe(true);
+    setAutoAim(false, store);
+    expect(autoAimEnabled(store)).toBe(false);
+    expect(store.map.get('gra.ui.autoAim')).toBe('0');
+    stop();
+  });
+
+  it('?autoaim=1|0 is stored like lefty', () => {
+    const store = memStore();
+    loadUiSettings('?autoaim=1', store);
+    expect(autoAimEnabled(store)).toBe(true);
+    expect(store.map.get('gra.ui.autoAim')).toBe('1');
+    loadUiSettings('?autoaim=0&lefty=1', store);
+    expect(autoAimEnabled(store)).toBe(false);
+    expect(loadUiSettings('', store).leftHanded).toBe(true);
+  });
+
+  it('is false when storage throws', () => {
+    const store = memStore();
+    store.getItem = () => {
+      throw new Error('blocked');
+    };
+    expect(autoAimEnabled(store)).toBe(false);
   });
 });

@@ -29,6 +29,7 @@ import {
   EVAC_TILE,
   enemyDiagMs,
 } from '../data/combat-m0';
+import { ITEM_DEFS } from '../data/inventory-m1';
 import { MAPS } from '../data/maps';
 import {
   COMBAT_STYLE,
@@ -41,9 +42,11 @@ import {
 import { createEntity, setCell, type Entity } from '../entities/entity';
 import { tryStep, type StepCosts } from '../entities/movement';
 import { toDir8, type ActionState, type Dir8 } from '../input/actions';
+import { autoAimEnabled } from '../ui/settings';
 import { canStep } from '../world/collision';
 import { parseMap, type TileMap } from '../world/tilemap';
 import {
+  arcCells,
   bfsFirstStep,
   chebyshev,
   clockAngle,
@@ -54,6 +57,7 @@ import {
   sameCell,
   type Cell,
 } from './grid';
+import { buildShot, stepProjectiles, type PlayerProjectile } from './projectiles';
 import type {
   AttackTarget,
   CombatData,
@@ -221,6 +225,9 @@ export function createCombatData(state: GameState, opts: CombatInitOptions = {})
     fxIds: new Set(),
     strikes: new Map(),
     boss: null,
+    projectiles: [],
+    nextProjectileId: 1,
+    tokenPriority: [],
     tick: state.tick,
   };
 }
@@ -560,14 +567,51 @@ function enemyOccupied(state: GameState, e: Entity) {
 
 const SKILL_KEYS = ['skill1', 'skill2', 'skill3'] as const;
 
+/** Aim-stick fire. Missing on an older ActionState → not firing. */
+function readAimFire(actions: ActionState): boolean {
+  if (!('aimFire' in actions)) return false;
+  return Boolean((actions as { aimFire?: boolean }).aimFire);
+}
+
+/** Mouse cell under the cursor. Missing on an older ActionState → null. */
+function readAimCell(actions: ActionState): Cell | null {
+  if (!('aimCell' in actions)) return null;
+  const cell = (actions as { aimCell?: { x: number; y: number } | null }).aimCell;
+  if (!cell || typeof cell.x !== 'number' || typeof cell.y !== 'number') return null;
+  return { x: cell.x, y: cell.y };
+}
+
+/** A facing / offset as one of DIRS8. (0, 0) falls back to east. */
+function asDir8(d: Cell): Dir8 {
+  const x = Math.sign(d.x) as Dir8['x'];
+  const y = Math.sign(d.y) as Dir8['y'];
+  if (x === 0 && y === 0) return { x: 1, y: 0 };
+  return { x, y };
+}
+
+/**
+ * Equipped weapon. No inventory section, or anything that is not `weaponType: 'ranged'`,
+ * is melee (a fresh game wears the Issue Pole).
+ */
+export function equippedWeaponType(state: GameState): 'melee' | 'ranged' {
+  const inv = state.sections.inventory as
+    | { gear?: { weapon?: { itemId?: string } | null } }
+    | undefined;
+  const id = inv?.gear?.weapon?.itemId;
+  return id && ITEM_DEFS[id]?.weaponType === 'ranged' ? 'ranged' : 'melee';
+}
+
 export function combatPlayerPhase(state: GameState, actions: ActionState): void {
   const c = getCombat(state);
   c.events = [];
   c.tick = state.tick;
   const p = state.player;
   const pc = c.player;
+  const aimFire = readAimFire(actions);
+  const firing = actions.attack || aimFire;
   const any =
-    actions.attack ||
+    firing ||
+    actions.aim !== null ||
     actions.skill1 ||
     actions.skill2 ||
     actions.skill3 ||
@@ -604,39 +648,57 @@ export function combatPlayerPhase(state: GameState, actions: ActionState): void 
   if (c.cfg.BUMP_ATTACK_ENABLED && bumpAttack(state, c, toDir8(actions.move))) return;
 
   // §1.3 ATK queue: a press in the last ATK_QUEUE_MS of cooldown fires when it ends.
+  // The edge is the attack button; a held aim stick repeats without using the queue.
   if (pressed && !pc.attack && p.attackCooldown > 0 && p.attackCooldown <= c.t.atkQueue) {
     pc.atkQueued = true;
     pc.queuedTargetId = null;
   }
   if (pc.attack || p.attackCooldown > 0) return;
 
-  // A bump queued in cooldown keeps its own target while still in reach (§2.6).
-  const queued =
-    pc.queuedTargetId !== null ? livingEnemyInReach(state, c, pc.queuedTargetId) : null;
-  const target = queued ?? pickTarget(state, c);
   const tap = pressed || pc.atkQueued;
-  // §1.3: hold = auto-attack only with a target; a tap without target swings at `facing`.
-  if (!tap && !(actions.attack && target)) return;
-  startPlayerAttack(
-    state,
-    c,
-    target,
-    target ? cellOf(target) : { x: p.x + p.facing.x, y: p.y + p.facing.y },
-  );
+  // Hold (attack or aimFire) repeats on the weapon cycle, even with nothing in reach.
+  if (!tap && !firing) return;
+
+  const kind = equippedWeaponType(state);
+  const range = kind === 'ranged' ? c.cfg.RANGED_RANGE : c.cfg.SWING_RANGE;
+  const manual = actions.aim;
+  let dir: Dir8;
+  let shot: Cell | null = null;
+  if (manual) {
+    // Manual aim wins over auto-aim. Melee does not cone-correct: the arc already covers it.
+    dir = manual;
+    if (kind === 'ranged') shot = rangedAim(state, c, actions, dir);
+  } else if (pc.queuedTargetId !== null) {
+    // A queued bump already turned `facing` toward that enemy.
+    dir = asDir8(p.facing);
+  } else if (autoAimEnabled()) {
+    const t = pickTarget(state, c, range);
+    if (t) {
+      dir = asDir8({ x: t.x - p.x, y: t.y - p.y });
+      if (kind === 'ranged') shot = cellOf(t);
+    } else dir = asDir8(p.facing);
+  } else {
+    dir = asDir8(p.facing);
+    if (kind === 'ranged') shot = rangedAim(state, c, actions, dir);
+  }
+  startPlayerAttack(state, c, dir, readAimCell(actions), shot);
 }
 
 function startPlayerAttack(
   state: GameState,
   c: CombatData,
-  target: Entity | null,
-  aim: Cell,
+  dir: Dir8,
+  aimCell: Cell | null,
+  target: Cell | null,
 ): void {
   const pc = c.player;
-  pc.attack = { targetId: target ? target.id : null, aim };
+  const ranged = equippedWeaponType(state) === 'ranged';
+  pc.attack = { dir, aimCell, target };
   pc.atkQueued = false;
   pc.queuedTargetId = null;
   // §2.5 speed affixes: wind-up and cooldown share one fractional carry (ACTION_TICK_ACCUMULATOR).
-  state.player.attackWindup = playerAttackTicks(c, c.cfg.PLAYER_ATK_WINDUP_MS) + RESOLVES_NOW;
+  const windup = ranged ? c.cfg.RANGED_WINDUP_MS : c.cfg.SWING_WINDUP_MS;
+  state.player.attackWindup = playerAttackTicks(c, windup) + RESOLVES_NOW;
 }
 
 /** Whole ticks of a player attack phase with the attack-time modifier and carry (§2.5). */
@@ -675,7 +737,7 @@ function bumpAttack(state: GameState, c: CombatData, dir: Dir8 | null): boolean 
     }
     return true;
   }
-  startPlayerAttack(state, c, hit, cellOf(hit));
+  startPlayerAttack(state, c, dir, null, null);
   return true;
 }
 
@@ -717,25 +779,29 @@ function damageHostile(
   else damageBoss(state, c, dmg, crit, source, cellOf(e));
 }
 
-function livingEnemyInReach(state: GameState, c: CombatData, id: number): Entity | null {
-  const ec = c.enemies.get(id);
-  const e = entityById(state, id);
-  if (!e || (ec ? ec.ai === 'dead' : !isBossPart(c, e))) return null;
-  return inMeleeReach(state.map, cellOf(state.player), cellOf(e), c.cfg.PLAYER_ATK_RANGE)
-    ? e
-    : null;
+/** Angle in degrees between two vectors. A zero vector is "not in the cone". */
+function angleBetween(a: Cell, b: Cell): number {
+  const am = Math.hypot(a.x, a.y);
+  const bm = Math.hypot(b.x, b.y);
+  if (am === 0 || bm === 0) return 180;
+  const cos = Math.min(1, Math.max(-1, (a.x * b.x + a.y * b.y) / (am * bm)));
+  return (Math.acos(cos) * 180) / Math.PI;
 }
 
 /**
- * §1.3 auto-target: nearest living enemy in reach; tie → the one in the `facing` direction,
- * then the first clockwise from north. Frozen at attack start.
+ * §1.3 auto-target: nearest living hostile in `range` (default PLAYER_ATK_RANGE, so older
+ * callers stay on reach 1). Tie → the one in the `facing` direction, then clockwise from north.
  */
-export function pickTarget(state: GameState, c: CombatData = getCombat(state)): Entity | null {
+export function pickTarget(
+  state: GameState,
+  c: CombatData = getCombat(state),
+  range = c.cfg.PLAYER_ATK_RANGE,
+): Entity | null {
   const p = state.player;
   let best: Entity | null = null;
   let bestKey: [number, number, number] = [Infinity, Infinity, Infinity];
   for (const e of hostiles(state, c)) {
-    if (!inMeleeReach(state.map, cellOf(p), cellOf(e), c.cfg.PLAYER_ATK_RANGE)) continue;
+    if (!inMeleeReach(state.map, cellOf(p), cellOf(e), range)) continue;
     const d = { x: e.x - p.x, y: e.y - p.y };
     const facing = Math.sign(d.x) === p.facing.x && Math.sign(d.y) === p.facing.y ? 0 : 1;
     const key: [number, number, number] = [chebyshev(p, e), facing, clockAngle(d)];
@@ -749,6 +815,56 @@ export function pickTarget(state: GameState, c: CombatData = getCombat(state)): 
     }
   }
   return best;
+}
+
+/**
+ * Ranged aim assist (wariant-twin-stick §4): hostiles inside ±AIM_ASSIST_CONE_DEG of `dir`,
+ * within `range`, with line of sight. Nearest Chebyshev, then smaller angle to the axis,
+ * then clockwise DIRS8 order. Melee does not call this.
+ */
+export function pickAimTarget(
+  state: GameState,
+  c: CombatData,
+  dir: Dir8,
+  range: number,
+): Entity | null {
+  const p = state.player;
+  const cone = c.cfg.AIM_ASSIST_CONE_DEG;
+  let best: Entity | null = null;
+  let bestKey: [number, number, number] = [Infinity, Infinity, Infinity];
+  for (const e of hostiles(state, c)) {
+    if (chebyshev(p, e) > range || !lineOfSight(state.map, p, e)) continue;
+    const d = { x: e.x - p.x, y: e.y - p.y };
+    const ang = angleBetween(dir, d);
+    if (ang > cone + 1e-9) continue;
+    const key: [number, number, number] = [chebyshev(p, e), ang, clockAngle(d)];
+    if (
+      key[0] < bestKey[0] ||
+      (key[0] === bestKey[0] &&
+        (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))
+    ) {
+      best = e;
+      bestKey = key;
+    }
+  }
+  return best;
+}
+
+/**
+ * Ranged target cell locked at the press. A mouse cell that is a hostile in range with LOS
+ * wins and skips the cone. Otherwise the cone, or null (fly along `dir` for RANGED_RANGE).
+ */
+function rangedAim(state: GameState, c: CombatData, actions: ActionState, dir: Dir8): Cell | null {
+  const p = state.player;
+  const range = c.cfg.RANGED_RANGE;
+  const mouse = readAimCell(actions);
+  if (mouse && chebyshev(p, mouse) <= range && lineOfSight(state.map, p, mouse)) {
+    const on = hostiles(state, c).find((e) => sameCell(e, mouse));
+    if (on) return cellOf(on);
+  }
+  if (!c.cfg.AIM_ASSIST_ENABLED) return null;
+  const t = pickAimTarget(state, c, dir, range);
+  return t ? cellOf(t) : null;
 }
 
 // ---- §2.5 skills -------------------------------------------------------------------------------
@@ -786,7 +902,10 @@ function skillPhase(
     pc.skillQueue = null;
     return false;
   }
-  if (pc.skillCd[id] === 0 && !playerBusy(state, c)) {
+  // Dash cancels an in-progress swing. It does not cancel another skill's wind-up.
+  const cancellingDash =
+    id === 'dash' && pc.cast === null && (pc.attack !== null || state.player.attackWindup > 0);
+  if (pc.skillCd[id] === 0 && (!playerBusy(state, c) || cancellingDash)) {
     pc.skillQueue = null;
     return castSkill(state, c, id, q.slot, actions);
   }
@@ -813,10 +932,7 @@ function castSkill(
     return false;
   };
   if (id === 'buddyDrone' && !freeDroneCell(state)) return fail('noCell');
-  const dashDir: Dir8 = toDir8(actions.move) ?? {
-    x: p.facing.x as Dir8['x'],
-    y: p.facing.y as Dir8['y'],
-  };
+  const dashDir: Dir8 = toDir8(actions.move) ?? actions.aim ?? asDir8(p.facing);
   if (id === 'dash' && dashPath(state, c, dashDir).length === 0) {
     // v0.5.2: a Dash that cannot move ≥ 1 cell fails – no cooldown, no Momentum.
     p.facing = { x: dashDir.x, y: dashDir.y };
@@ -861,6 +977,11 @@ function dash(state: GameState, c: CombatData, dir: Dir8): void {
   const pc = c.player;
   const from = cellOf(p);
   const path = dashPath(state, c, dir);
+  // A swing in progress is lost: no attack cooldown. Dash's own cooldown was already spent.
+  if (path.length > 0) {
+    pc.attack = null;
+    p.attackWindup = 0;
+  }
   const x = p.x + dir.x * path.length;
   const y = p.y + dir.y * path.length;
   p.facing = { x: dir.x, y: dir.y };
@@ -1049,7 +1170,8 @@ export function combatWorldPhase(state: GameState, actions: ActionState): void {
     for (const { e, ec } of enemies) enemyAi(state, c, e, ec, requests); // 3
     grantAttackTokens(state, c, requests); // 3 – §2.10 tokens, deterministic order
     resolveCast(state, c); // 4a – player side first: skill wind-up,
-    resolvePlayerBlow(state, c); //      basic blow,
+    stepPlayerProjectiles(state, c); // shots already in the air (after enemies moved)
+    resolvePlayerAttack(state, c); //      swing or a new shot,
     droneFire(state, c); //               drone shot
     bossResolve(state, c); // 4b – boss swing / charge step
     for (const { e, ec } of enemies) resolveEnemyBlow(state, c, e, ec); // 4b
@@ -1070,11 +1192,20 @@ export function combatWorldPhase(state: GameState, actions: ActionState): void {
 function applyPlayerMoveAffix(state: GameState, c: CombatData): void {
   const p = state.player;
   const pc = c.player;
-  if (pc.moveTimeMod === 0 || p.moveTick !== state.tick || p.moveTicks <= 0) return;
+  // Dash uses setCell (moveTicks 0) and never reaches this. A step already in progress
+  // has moveTick from an earlier tick, so it is not recomputed.
+  if (p.moveTick !== state.tick || p.moveTicks <= 0) return;
+  const cycling = p.attackWindup > 0 || p.attackCooldown > 0 || pc.attack !== null;
+  const kite = !cycling
+    ? 1
+    : equippedWeaponType(state) === 'ranged'
+      ? c.cfg.RANGED_KITE_MOVE_MULT
+      : c.cfg.KITE_MOVE_MULT;
+  if (pc.moveTimeMod === 0 && kite === 1) return;
   const diag = p.x !== p.fromX && p.y !== p.fromY;
   const base = diag ? c.cfg.PLAYER_MOVE_DIAG_MS : c.cfg.PLAYER_MOVE_MS;
   const r = accumulateTicks(
-    base * (1 + pc.moveTimeMod),
+    base * (1 + pc.moveTimeMod) * kite,
     c.cfg.TICK_MS,
     pc.moveCarry,
     c.cfg.ACTION_TICK_ACCUMULATOR,
@@ -1243,8 +1374,12 @@ function act(
   }
   if (!mobile) return;
   // §2.10: no free token for this target → approach at most to TOKEN_WAIT_DIST and wait there.
+  // A hit that did not find this enemy holding a token puts them first: they keep closing
+  // so they can enter reach and take the next token.
+  const prioritized = c.cfg.TOKEN_PRIORITY_ON_HIT && c.tokenPriority.includes(e.id);
   if (
     c.cfg.ATTACK_TOKENS_ENABLED &&
+    !prioritized &&
     !tokenRoom(c, target, def) &&
     chebyshev(e, tgt) <= c.cfg.TOKEN_WAIT_DIST
   )
@@ -1300,7 +1435,13 @@ function tokenRoom(c: CombatData, target: AttackTarget, def: EnemyTypeDef): bool
  * token. Without a token the enemy waits in place (it is already in reach – no retreat).
  */
 function grantAttackTokens(state: GameState, c: CombatData, requests: AttackRequest[]): void {
-  requests.sort((a, b) => a.dist - b.dist || a.order - b.order);
+  const rank = (id: number) => {
+    const i = c.tokenPriority.indexOf(id);
+    return i < 0 ? 1e9 : i;
+  };
+  requests.sort(
+    (a, b) => rank(a.e.id) - rank(b.e.id) || a.dist - b.dist || a.order - b.order,
+  );
   for (const r of requests) {
     if (c.cfg.ATTACK_TOKENS_ENABLED) {
       const def = typeOf(c, r.ec);
@@ -1309,7 +1450,21 @@ function grantAttackTokens(state: GameState, c: CombatData, requests: AttackRequ
       c.tokenTick[r.target] = state.tick;
     }
     startEnemyAttack(c, r.e, r.ec, r.aim, r.target);
+    const i = c.tokenPriority.indexOf(r.e.id);
+    if (i >= 0) c.tokenPriority.splice(i, 1);
   }
+}
+
+/** Hit enemies with no token become the next recipients, in the order they were struck. */
+function rememberTokenPriority(c: CombatData, ids: number[]): void {
+  if (!c.cfg.TOKEN_PRIORITY_ON_HIT || ids.length === 0) return;
+  const fresh = ids.filter((id) => {
+    const ec = c.enemies.get(id);
+    return !!ec && ec.hp > 0 && !ec.attack;
+  });
+  if (fresh.length === 0) return;
+  const set = new Set(fresh);
+  c.tokenPriority = [...fresh, ...c.tokenPriority.filter((id) => !set.has(id))];
 }
 
 function startEnemyAttack(
@@ -1432,37 +1587,133 @@ function damageEnemy(
     startChase(ec, state.player);
 }
 
-function resolvePlayerBlow(state: GameState, c: CombatData): void {
+function resolvePlayerAttack(state: GameState, c: CombatData): void {
   const p = state.player;
   const pc = c.player;
   const a = pc.attack;
   if (!a || p.attackWindup > RESOLVES_NOW) return;
   pc.attack = null;
   p.attackWindup = 0;
-  p.attackCooldown = playerAttackTicks(c, c.cfg.PLAYER_ATK_COOLDOWN_MS);
-  const momentum = pc.momentum > 0; // §2.5: the first basic blow after Dash uses it up
+  // Live weapon: inventory may have been restored after this wind-up was saved.
+  const ranged = equippedWeaponType(state) === 'ranged';
+  const cycle = ranged ? c.cfg.RANGED_CYCLE_MS : c.cfg.SWING_CYCLE_MS;
+  const windup = ranged ? c.cfg.RANGED_WINDUP_MS : c.cfg.SWING_WINDUP_MS;
+  p.attackCooldown = playerAttackTicks(c, cycle - windup);
+  if (ranged) tryFire(state, c, a);
+  else resolveSwing(state, c, a.dir);
+}
+
+/** Melee arc. Momentum is spent once and multiplies every target's roll. */
+function resolveSwing(state: GameState, c: CombatData, dir: Dir8): void {
+  const p = state.player;
+  const pc = c.player;
+  const momentum = pc.momentum > 0;
   pc.momentum = 0;
-  const reach = (e: Entity) => inMeleeReach(state.map, p, e, c.cfg.PLAYER_ATK_RANGE);
-  let victim: Entity | undefined;
+  const cells = arcCells(state.map, p, dir);
+  const fxTicks = msToTicks(c.cfg.SWING_FX_MS, c.cfg.TICK_MS);
+  for (const cell of cells) addFx(state, c, cell, COMBAT_STYLE.strike, fxTicks, true);
+  const victims: Entity[] = [];
+  let bossHit = false;
   for (const e of hostiles(state, c)) {
-    if (!reach(e)) continue;
-    if (a.targetId !== null ? e.id === a.targetId : sameCell(e, a.aim)) victim = e;
-  }
-  addFx(state, c, victim ? cellOf(victim) : a.aim, COMBAT_STYLE.strike, c.t.strikeFx, true);
-  if (!victim) {
-    emit(c, { type: 'playerWhiff' });
-    if (a.targetId !== null) {
-      const t = entityById(state, a.targetId);
-      floatText(c, 'miss', COMBAT_STRINGS.miss, t ? cellOf(t) : a.aim);
+    if (!cells.some((q) => sameCell(q, e))) continue;
+    if (isBossPart(c, e)) {
+      if (bossHit) continue;
+      bossHit = true;
     }
-    return;
+    victims.push(e);
   }
+  emit(c, {
+    type: 'playerSwing',
+    entityId: p.id,
+    dir,
+    cells,
+    hitIds: victims.map((e) => e.id),
+  });
   const { cfg } = c;
   const rng = combatRng(state);
-  const base = rng.int(cfg.PLAYER_DMG_MIN, cfg.PLAYER_DMG_MAX);
-  const crit = rng.next() < cfg.PLAYER_CRIT_CHANCE;
-  const dmg = computeDamage(base, { crit, momentum }, cfg); // enemies have no armour (§2.11)
-  damageHostile(state, c, victim, dmg, crit, 'attack');
+  const priority: number[] = [];
+  for (const e of victims) {
+    const base = rng.int(cfg.PLAYER_DMG_MIN, cfg.PLAYER_DMG_MAX);
+    const crit = rng.next() < cfg.PLAYER_CRIT_CHANCE;
+    const dmg = computeDamage(base, { crit, momentum }, cfg);
+    const ec = c.enemies.get(e.id);
+    const held = !!ec?.attack;
+    damageHostile(state, c, e, dmg, crit, 'attack');
+    if (ec && !held) priority.push(e.id);
+  }
+  rememberTokenPriority(c, priority);
+}
+
+/**
+ * Ranged fire. At the projectile cap the shot is skipped (momentum kept) but the cooldown
+ * already started, so holding fire does not spin. Damage is rolled now.
+ */
+function tryFire(
+  state: GameState,
+  c: CombatData,
+  a: { dir: Dir8; target: Cell | null },
+): void {
+  if (c.projectiles.length >= c.cfg.RANGED_MAX_PROJECTILES) return;
+  const p = state.player;
+  const pc = c.player;
+  const momentum = pc.momentum > 0;
+  const rng = combatRng(state);
+  const base = rng.int(c.cfg.RANGED_DMG_MIN, c.cfg.RANGED_DMG_MAX);
+  const crit = rng.next() < c.cfg.PLAYER_CRIT_CHANCE;
+  const dmg = computeDamage(base, { crit, momentum }, c.cfg);
+  const shot = buildShot(state.map, cellOf(p), a.dir, c.cfg.RANGED_RANGE, a.target);
+  const ticks = Math.max(1, msToTicks(c.cfg.RANGED_PROJ_MS_PER_CELL, c.cfg.TICK_MS));
+  const proj: PlayerProjectile = {
+    id: c.nextProjectileId++,
+    cells: shot.cells,
+    idx: -1,
+    timer: ticks,
+    dmg,
+    crit,
+    momentum,
+    ownerId: p.id,
+    dir: { x: a.dir.x, y: a.dir.y },
+    from: cellOf(p),
+    endCell: shot.endCell,
+  };
+  c.projectiles.push(proj);
+  if (momentum) pc.momentum = 0;
+  emit(c, {
+    type: 'projectileFired',
+    entityId: p.id,
+    projectileId: proj.id,
+    dir: a.dir,
+    from: proj.from,
+    cells: shot.cells,
+  });
+}
+
+function hostileAt(state: GameState, c: CombatData, cell: Cell): number | null {
+  for (const e of hostiles(state, c)) if (sameCell(e, cell)) return e.id;
+  return null;
+}
+
+/** Advance shots. An enemy that stepped onto the standing cell is hit before the advance. */
+function stepPlayerProjectiles(state: GameState, c: CombatData): void {
+  if (c.projectiles.length === 0) return;
+  const ticks = Math.max(1, msToTicks(c.cfg.RANGED_PROJ_MS_PER_CELL, c.cfg.TICK_MS));
+  const impacts = stepProjectiles(c.projectiles, ticks, (cell) => hostileAt(state, c, cell));
+  for (const hit of impacts) {
+    emit(c, {
+      type: 'projectileHit',
+      entityId: hit.proj.ownerId,
+      projectileId: hit.proj.id,
+      cell: hit.cell,
+      hitId: hit.hitId,
+    });
+    if (hit.hitId === null) continue;
+    const e = entityById(state, hit.hitId);
+    if (!e) continue;
+    const ec = c.enemies.get(e.id);
+    const held = !!ec?.attack;
+    damageHostile(state, c, e, hit.proj.dmg, hit.proj.crit, 'attack');
+    if (ec && !held) rememberTokenPriority(c, [e.id]);
+  }
 }
 
 function resolveEnemyBlow(state: GameState, c: CombatData, e: Entity, ec: EnemyCombat): void {
@@ -1574,6 +1825,8 @@ function enemyLifecycle(state: GameState, c: CombatData, e: Entity, ec: EnemyCom
     ec.attack = null;
     ec.shock = 0;
     ec.respawnTimer = c.t.enemyRespawn;
+    const pri = c.tokenPriority.indexOf(e.id);
+    if (pri >= 0) c.tokenPriority.splice(pri, 1);
     e.solid = false;
     e.attackWindup = 0;
     c.stats.kills++;
@@ -1620,6 +1873,8 @@ function killPlayer(state: GameState, c: CombatData): void {
   c.player.attack = null;
   c.player.cast = null;
   p.attackWindup = 0;
+  c.projectiles = [];
+  c.tokenPriority = [];
   removeDrone(state, c, 'playerDied');
   // §1.8: body '%' at the death cell. Only the latest one.
   for (const e of state.entities) if (e.kind === CORPSE_KIND) c.fxIds.delete(e.id);
@@ -1772,6 +2027,14 @@ function updateVisuals(state: GameState, c: CombatData): void {
     }
   }
   bossVisuals(state, c);
+  for (const proj of c.projectiles) {
+    if (proj.idx < 0) continue;
+    const cell = proj.cells[proj.idx];
+    if (!cell) continue;
+    const m = createEntity(FX_KIND, cell.x, cell.y, COMBAT_STYLE.playerProjectile);
+    m.solid = false;
+    markers.push(m);
+  }
   const bm = fxActive ? null : bossMarkers(c);
   if (bm) {
     const swing = bm.style === 'swing';

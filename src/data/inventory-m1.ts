@@ -91,12 +91,17 @@ export interface ItemDef {
   category: ItemCategory;
   /** Equipment slot (gear and Issue only). */
   slot?: ItemSlot;
+  /** v0.6: how the equipped weapon attacks. Absent = melee. */
+  weaponType?: 'melee' | 'ranged';
 }
 
 export const SCRAP_ITEM_ID = 'M1_ITEM_SCRAP';
 export const COPPER_ITEM_ID = 'M1_ITEM_COPPER';
 export const MEDPATCH_ITEM_ID = 'M1_ITEM_MEDPATCH';
-export const ISSUE_BATON_ITEM_ID = 'M1_ITEM_ISSUE_BATON';
+export const ISSUE_POLE_ITEM_ID = 'M1_ITEM_ISSUE_POLE';
+/** @deprecated Old id string. Points at the Issue Pole so existing imports keep compiling. */
+export const ISSUE_BATON_ITEM_ID = ISSUE_POLE_ITEM_ID;
+export const RAIL_PISTOL_ITEM_ID = 'M1_ITEM_RAIL_PISTOL';
 export const ISSUE_SUIT_ITEM_ID = 'M1_ITEM_ISSUE_SUIT';
 
 /** Item id of a generated gear piece per slot (instance data: rarity, ilvl, affixes). */
@@ -172,8 +177,8 @@ export const ITEMS_M1: readonly ItemDef[] = [
     category: 'contract',
   },
   {
-    id: ISSUE_BATON_ITEM_ID,
-    nameId: 'M1_GEAR_ISSUE_BATON',
+    id: ISSUE_POLE_ITEM_ID,
+    nameId: 'M1_GEAR_ISSUE_POLE',
     glyph: ITEM_GLYPHS.weapon.glyph,
     colorKey: 'rarity1', // [ASSUMPTION] no own Issue colour in GRAF – grey like rarity 1
     valueCr: 0,
@@ -181,6 +186,19 @@ export const ITEMS_M1: readonly ItemDef[] = [
     sellable: false,
     category: 'issue',
     slot: 'weapon',
+    weaponType: 'melee',
+  },
+  {
+    id: RAIL_PISTOL_ITEM_ID,
+    nameId: 'M1_GEAR_RAIL_PISTOL',
+    glyph: '/',
+    colorKey: 'rarity1',
+    valueCr: 0,
+    stack: 1,
+    sellable: false,
+    category: 'gear',
+    slot: 'weapon',
+    weaponType: 'ranged',
   },
   {
     id: ISSUE_SUIT_ITEM_ID,
@@ -203,9 +221,9 @@ export const ITEM_DEFS: Readonly<Record<string, ItemDef>> = Object.fromEntries(
   ITEMS_M1.map((d) => [d.id, d]),
 );
 
-/** Issue item that fills an empty slot (Issue Baton / Issue Suit; module and tool have none). */
+/** Issue item that fills an empty slot (Issue Pole / Issue Suit; module and tool have none). */
 export const ISSUE_FOR_SLOT: Readonly<Partial<Record<ItemSlot, string>>> = {
-  weapon: ISSUE_BATON_ITEM_ID,
+  weapon: ISSUE_POLE_ITEM_ID,
   armor: ISSUE_SUIT_ITEM_ID,
 };
 

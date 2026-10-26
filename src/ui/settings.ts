@@ -2,6 +2,7 @@
  * UI settings (M0: no settings screen yet). Left-handed mode = mirror of the touch layout
  * (sterowanie.md §2). Set by URL `?lefty=1` (also stored) or localStorage `gra.ui.leftHanded`.
  * `?touch=1` forces the touch controls visible (desktop testing / screenshots).
+ * Auto-aim (wariant-twin-stick §12, M1_SET_AUTOAIM): `?autoaim=1|0` or `gra.ui.autoAim`.
  * Reduce motion: see createReduceMotion() below.
  */
 export interface UiSettings {
@@ -10,13 +11,19 @@ export interface UiSettings {
 }
 
 const KEY = 'gra.ui.leftHanded';
+const AUTO_KEY = 'gra.ui.autoAim';
 
 export function loadUiSettings(
   search = location.search,
   store: Storage | null = safeStorage(),
 ): UiSettings {
   const q = new URLSearchParams(search);
-  let leftHanded = store?.getItem(KEY) === '1';
+  let leftHanded = false;
+  try {
+    leftHanded = store?.getItem(KEY) === '1';
+  } catch {
+    /* storage blocked */
+  }
   const lefty = q.get('lefty');
   if (lefty === '1' || lefty === '0') {
     leftHanded = lefty === '1';
@@ -26,7 +33,57 @@ export function loadUiSettings(
       /* storage blocked */
     }
   }
+  const auto = q.get('autoaim');
+  if (auto === '1' || auto === '0') {
+    const on = auto === '1';
+    try {
+      store?.setItem(AUTO_KEY, auto);
+      autoFallback = store ? null : on;
+    } catch {
+      autoFallback = on;
+    }
+  }
   return { leftHanded, forceTouch: q.get('touch') === '1' };
+}
+
+type AutoListener = (on: boolean) => void;
+const autoListeners = new Set<AutoListener>();
+/** Session value used only when storage is missing or throws (private mode). */
+let autoFallback: boolean | null = null;
+
+function readAuto(store: Storage | null): boolean {
+  try {
+    const v = store?.getItem(AUTO_KEY);
+    if (v === '1') return true;
+    if (v === '0') return false;
+  } catch {
+    return autoFallback ?? false;
+  }
+  if (!store) return autoFallback ?? false;
+  return false;
+}
+
+/** Auto-aim (default off). Reads storage; safe if localStorage throws. No DOM. */
+export function autoAimEnabled(store: Storage | null = safeStorage()): boolean {
+  return readAuto(store);
+}
+
+/** Persist Auto-aim and notify listeners (touch controls show or hide ATK). */
+export function setAutoAim(on: boolean, store: Storage | null = safeStorage()): void {
+  try {
+    store?.setItem(AUTO_KEY, on ? '1' : '0');
+    autoFallback = store ? null : on;
+  } catch {
+    autoFallback = on;
+  }
+  for (const fn of [...autoListeners]) fn(on);
+}
+
+/** Called now and on every setAutoAim. Returns unsubscribe. */
+export function subscribeAutoAim(fn: AutoListener): () => void {
+  autoListeners.add(fn);
+  fn(autoAimEnabled());
+  return () => autoListeners.delete(fn);
 }
 
 function safeStorage(): Storage | null {

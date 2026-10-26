@@ -45,8 +45,21 @@ function run(s: GameState, from: number, n: number) {
   for (let i = from; i < from + n; i++) {
     const tick = s.tick;
     stepGame(s, act(i), COMBAT.TICK_MS);
-    for (const ev of getCombat(s).events)
-      out.push(JSON.stringify({ tick, ev: { ...ev, enemyId: 0 } as CombatEvent }));
+    for (const ev of getCombat(s).events) {
+      const scrubbed = { ...ev } as CombatEvent & {
+        enemyId?: number;
+        entityId?: number;
+        projectileId?: number;
+        hitIds?: number[];
+        hitId?: number | null;
+      };
+      if ('enemyId' in scrubbed) scrubbed.enemyId = 0;
+      if ('entityId' in scrubbed) scrubbed.entityId = 0;
+      if ('projectileId' in scrubbed) scrubbed.projectileId = 0;
+      if (scrubbed.hitIds) scrubbed.hitIds = scrubbed.hitIds.map(() => 0);
+      if (typeof scrubbed.hitId === 'number') scrubbed.hitId = 0;
+      out.push(JSON.stringify({ tick, ev: scrubbed }));
+    }
   }
   return out;
 }
@@ -79,7 +92,7 @@ function fingerprint(s: GameState) {
       aw: p.attackWindup,
       ac: p.attackCooldown,
       ...pc,
-      attack: attack && { aim: attack.aim, hasTarget: attack.targetId !== null },
+      attack: attack && { dir: attack.dir },
       q: queuedTargetId !== null,
     },
     enemies,
@@ -108,7 +121,7 @@ function game(opts: CombatInitOptions = {}) {
   return s;
 }
 
-describe('combat save (save v3 section "combat")', () => {
+describe('combat save (save v4 section "combat")', () => {
   it('mid-combat save → load continues tick-exact (wind-ups, cooldowns, AI, RNG stream)', () => {
     const a = game();
     spawnEnemy(a, 'panelDrone', { x: 12, y: 1 });
@@ -162,7 +175,7 @@ describe('combat save (save v3 section "combat")', () => {
   it('a save made before combat started loads as a new game (lazy init)', () => {
     const a = createGame({ mapRows: ROWS, seed: 7 });
     const data = snapshot(a, 0);
-    expect(data.combat).toEqual({ v: 3, empty: true });
+    expect(data.combat).toEqual({ v: 4, empty: true });
     const b = gameFromSave(parseSaveText(saveToJson(data)), { mapRows: ROWS });
     expect(peekCombat(b)).toBeUndefined();
     expect(getCombat(b).enemies.size).toBe(1);
@@ -186,8 +199,21 @@ describe('combat save (save v3 section "combat")', () => {
     expect(bad((c) => (c.player.hp = 'x'))).toThrow(SaveError);
     expect(bad((c) => (c.enemies[0].ai = 'dancing'))).toThrow(SaveError);
     expect(bad((c) => (c.enemies[0].type = 'dragon'))).toThrow(SaveError);
-    expect(bad((c) => (c.player.attack = { target: 5, aim: { x: 1, y: 1 } }))).toThrow(SaveError);
+    expect(bad((c) => (c.player.attack = { dir: { x: 5, y: 0 } }))).toThrow(SaveError);
     expect(bad((c) => (c.enemies[0].attackWindup = -1))).toThrow(SaveError);
+  });
+
+  it('v3 attack { target, aim } migrates to a dir from aim minus the player cell', () => {
+    const a = game();
+    expect([a.player.x, a.player.y]).toEqual([3, 2]);
+    const load = (aim: { x: number; y: number }) => {
+      const data = JSON.parse(saveToJson(snapshot(a, 0)));
+      data.combat.v = 3;
+      data.combat.player.attack = { target: 0, aim };
+      return gameFromSave(parseSaveText(JSON.stringify(data)), { mapRows: ROWS });
+    };
+    expect(getCombat(load({ x: 4, y: 2 })).player.attack?.dir).toEqual({ x: 1, y: 0 });
+    expect(getCombat(load({ x: 3, y: 2 })).player.attack?.dir).toEqual({ x: 1, y: 0 });
   });
 
   it('holds no RNG state (the engine saves stream "combat" in rngState)', () => {

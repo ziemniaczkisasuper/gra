@@ -36,10 +36,53 @@ export const COMBAT_EXTRAS = {
   ATTACK_TOKENS_RANGED: 1,
   ATTACK_TOKEN_STAGGER_MS: 150,
   DRONE_ATTACK_TOKENS: 2,
-  /** §2.10: an enemy without a token approaches to at most this distance and waits. */
-  TOKEN_WAIT_DIST: 2,
+  /** §2.10: an enemy without a token approaches to at most this distance and waits.
+   *  v0.6: 3, so a waiter is outside the melee arc (wariant-twin-stick §5). */
+  TOKEN_WAIT_DIST: 3,
+  /** v0.6: a hit on an enemy who holds no token puts them first in the token queue. */
+  TOKEN_PRIORITY_ON_HIT: true,
   /** §2.5 skill buffer (like ATK). */
   SKILL_BUFFER_MS: 150,
+
+  // ---- v0.6 twin-stick (wariant-twin-stick.md §2–§5). Melee swing + ranged shot. ----------------
+  /** Arc cells per Dir8, indexed like combat/grid.ts DIRS8 (N, NE, E, SE, S, SW, W, NW).
+   *  Each row is 3 cells at distance 1, then 5 at distance 2, left-to-right. y grows down.
+   *  Hardcoded — do not rotate at runtime. */
+  ARC_OFFSETS: [
+    [[-1, -1], [0, -1], [1, -1], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2]],
+    [[0, -1], [1, -1], [1, 0], [0, -2], [1, -2], [2, -2], [2, -1], [2, 0]],
+    [[1, -1], [1, 0], [1, 1], [2, -2], [2, -1], [2, 0], [2, 1], [2, 2]],
+    [[1, 0], [1, 1], [0, 1], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2]],
+    [[1, 1], [0, 1], [-1, 1], [2, 2], [1, 2], [0, 2], [-1, 2], [-2, 2]],
+    [[0, 1], [-1, 1], [-1, 0], [0, 2], [-1, 2], [-2, 2], [-2, 1], [-2, 0]],
+    [[-1, 1], [-1, 0], [-1, -1], [-2, 2], [-2, 1], [-2, 0], [-2, -1], [-2, -2]],
+    [[-1, 0], [-1, -1], [0, -1], [-2, 0], [-2, -1], [-2, -2], [-1, -2], [0, -2]],
+  ] as readonly (readonly (readonly [number, number])[])[],
+  /** Melee swing reach (Chebyshev). Pulse / drone keep PLAYER_ATK_RANGE. */
+  SWING_RANGE: 2,
+  SWING_WINDUP_MS: 100,
+  /** Start-to-start. Cooldown after the wind-up is SWING_CYCLE_MS − SWING_WINDUP_MS. */
+  SWING_CYCLE_MS: 400,
+  SWING_FX_MS: 150,
+  /** A step pressed during the wind-up stays buffered (entities/player-move.ts). */
+  SWING_WINDUP_BLOCKS_MOVE: true,
+  /** ± cone around the aimed Dir8. Melee does not use it (the arc is already ±45°). */
+  AIM_ASSIST_CONE_DEG: 22.5,
+  AIM_ASSIST_ENABLED: true,
+  RANGED_RANGE: 7,
+  RANGED_PROJ_MS_PER_CELL: 100,
+  RANGED_WINDUP_MS: 100,
+  RANGED_CYCLE_MS: 500,
+  RANGED_DMG_MIN: 8,
+  RANGED_DMG_MAX: 12,
+  RANGED_MAX_PROJECTILES: 3,
+  /** Step started during a melee attack cycle (straight 150 ms → 202.5 ms). */
+  KITE_MOVE_MULT: 1.35,
+  /** Same, with a ranged weapon equipped (150 ms → 225 ms). */
+  RANGED_KITE_MOVE_MULT: 1.5,
+  /** Spare: enemy chase step × this after a long chase. Not applied while the flag is false. */
+  ENEMY_CHASE_HASTE_MULT: 0.85,
+  ENEMY_CHASE_HASTE_ENABLED: false,
 
   // §2.5 sk1 Dash
   SK1_DASH_RANGE: 3,
@@ -92,17 +135,20 @@ export const COMBAT_EXTRAS = {
   DEATH_SCREEN_AUTO_MS: 5000,
 };
 
+/** Named export of the swing table (also on COMBAT_EXTRAS / every profile). */
+export const ARC_OFFSETS = COMBAT_EXTRAS.ARC_OFFSETS;
+
 /** §2.9 lift shaft tile: impassable for enemies and the drone; a player standing on it is in
  *  the cabin (invulnerable, out of the combat simulation). Opening / level exit = Silnik / LUZ. */
 export const EVAC_TILE = '<';
 
 export const COMBAT_M0 = { ...M0, ...COMBAT_EXTRAS };
 
-/** §2.16 overrides for M1: no regeneration (§2.13), bump attack on (§2.6). */
+/** §2.16 overrides for M1: no regeneration (§2.13). Bump attack stays off (twin-stick v0.6). */
 export const COMBAT_M1: CombatConfig = {
   ...COMBAT_M0,
   PLAYER_REGEN_PER_S: 0,
-  BUMP_ATTACK_ENABLED: true,
+  BUMP_ATTACK_ENABLED: false,
   SKILLS_ENABLED: true,
   ATTACK_TOKENS_ENABLED: true,
   /** §2.11 v0.5 (GD, Z5): no enemy respawn during an M1 level (ENEMY_RESPAWN_IN_LEVEL false). */
@@ -112,16 +158,21 @@ export const COMBAT_M1: CombatConfig = {
 /** Default profile (the M0 prototype). */
 export const COMBAT = COMBAT_M0;
 
+/** One Dir8 arc: 8 cells of [dx, dy]. */
+type ArcTable = readonly (readonly (readonly [number, number])[])[];
+
 type Widen<T> = {
   readonly [K in keyof T]: T[K] extends number
     ? number
     : T[K] extends boolean
       ? boolean
-      : T[K] extends readonly number[]
-        ? readonly number[]
-        : T[K] extends object
-          ? Widen<T[K]>
-          : T[K];
+      : T[K] extends ArcTable
+        ? ArcTable
+        : T[K] extends readonly number[]
+          ? readonly number[]
+          : T[K] extends object
+            ? Widen<T[K]>
+            : T[K];
 };
 /** Shape of a combat profile (tests and profiles pass modified copies). */
 export type CombatConfig = Widen<typeof COMBAT_M0>;

@@ -650,7 +650,7 @@ describe('CombatSave v2', () => {
     expect(cb.player.hp).toBe(getCombat(a).player.hp);
     expect(cb.drone).toBeNull();
     expect(cb.player.skillCd).toEqual({ dash: 0, shockPulse: 0, buddyDrone: 0 });
-    expect((snapshot(b, 1).combat as { v: number }).v).toBe(3); // v1 → v2 → v3
+    expect((snapshot(b, 1).combat as { v: number }).v).toBe(4); // v1 → v2 → v3 → v4
   });
   it('contract enemies are flagged in enemyKilled', () => {
     const s = room();
