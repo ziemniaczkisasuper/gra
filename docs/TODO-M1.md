@@ -56,8 +56,9 @@ Cel M1 (`docs/plan-produkcji.md`, „Zakres M1”): baza → winda → głęb. 1
 - [ ] **T35. Zapis v5 i publikacja.** Jedna wersja zapisu dla całej pętli (tryb, baza, skrytka, postęp sieci, przystanki, terminale, `riskExplainerSeen`, flagi Prologu) z migracją z v4. Eksport / import działa po pełnej wyprawie. Na koniec publikacja jak w T8 (`docs/START-CURSOR.md`).
   Gotowe, gdy: zapis z dowolnego trybu wczytuje się bez utraty, a demo na https://ziemniaczkisasuper.github.io/gra/ przechodzi pętlę baza → strefa → baza.
 
-## Otwarte decyzje (nie dla Cursora)
+## Decyzje GD (26.10.2026), obowiązują w zadaniach powyżej
 
-- Bramka Lights I: `M1_TERM_08` czy „dowolne 3 fragmenty” (mechaniki §2.15, pomiar QA B1).
-- HP bossa 2400 czy 2600 (reguła QA R32, pomiar QA D7).
-- Płatne odświeżenie półki i kalibracja (balans-m1 §7) czekają na GD.
+- **Bramka Lights I** = `M1_TERM_08` (ten terminal daje 10 Copper potrzebne do zakupu). Jeśli w testach blokuje postęp, zmienić na „dowolne 3 fragmenty” (mechaniki §2.15).
+- **HP bossa** = 2400 na start (przy ~26 DPS walka trwa ok. 90 s, w normie 60–90 s). Korekta po pierwszych grach właściciela.
+- **Płatne odświeżenie półki**: 25 / 50 / 100 kr, maks. 3 razy na wizytę (balans-m1 v1.2 §7).
+- **Kalibracja (NEW STATS)**: koszt 2 × cena sprzedaży × 1,5^n. Gracz wybiera stare albo nowe statystyki, opłata przepada także przy KEEP OLD.
