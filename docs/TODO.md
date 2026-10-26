@@ -36,3 +36,5 @@ Numery linii są z commita 2963c22 i mogą się przesunąć. Szukaj po nazwie sy
 - Liczby oznaczone [R] trzeba jeszcze sprawdzić w grze (§11, §13).
 - `SWING_WINDUP_BLOCKS_MOVE` true czy false: rozstrzygnąć po testach.
 - Nazwa i glif broni dystansowej.
+
+Ciąg dalszy (pełna pętla wyprawy, T16+): `docs/TODO-M1.md`.
