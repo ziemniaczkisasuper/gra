@@ -53,7 +53,7 @@ Cel M1 (`docs/plan-produkcji.md`, „Zakres M1”): baza → winda → głęb. 1
   Gotowe, gdy: zakup Lights I zmienia skrytkę na 40 i uzupełnianie na 3, a mapa bazy pokazuje zapalony kabel.
 - [x] **T34. Prolog i podpowiedzi.** Nowa gra: `M1_BASE_01`–`02`, poziom Prologu (`level-m1.md` §3.6), kroki T01–T13 z mechaniki §2.19, pasek podpowiedzi na dole (ui-m1 §11.1–11.8), przełącznik „Hints”.
   Gotowe, gdy: nowy gracz bez instrukcji dochodzi do pierwszej ewakuacji (sprawdzenie ręczne na telefonie).
-- [ ] **T35. Zapis v5 i publikacja.** Jedna wersja zapisu dla całej pętli (tryb, baza, skrytka, postęp sieci, przystanki, terminale, `riskExplainerSeen`, flagi Prologu) z migracją z v4. Eksport / import działa po pełnej wyprawie. Na koniec publikacja jak w T8 (`docs/START-CURSOR.md`).
+- [x] **T35. Zapis v5 i publikacja.** Jedna wersja zapisu dla całej pętli (tryb, baza, skrytka, postęp sieci, przystanki, terminale, `riskExplainerSeen`, flagi Prologu) z migracją z v4. Eksport / import działa po pełnej wyprawie. Na koniec publikacja jak w T8 (`docs/START-CURSOR.md`).
   Gotowe, gdy: zapis z dowolnego trybu wczytuje się bez utraty, a demo na https://ziemniaczkisasuper.github.io/gra/ przechodzi pętlę baza → strefa → baza.
 
 ## Decyzje GD (26.10.2026), obowiązują w zadaniach powyżej
