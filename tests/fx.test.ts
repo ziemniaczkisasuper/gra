@@ -55,20 +55,27 @@ const isSingleCell = (c: string): boolean => {
   return !WIDE.some(([lo, hi]) => n >= lo && n <= hi);
 };
 
-describe('FX data (assety-m1.md v1.0)', () => {
-  it('has the 24 effects of the document + common blocks', () => {
-    expect(Object.keys(FX)).toHaveLength(24);
+describe('FX data (assety-m1.md v1.3)', () => {
+  it('has the 25 blocks of the document (24 effects + 1 UI block) + common blocks', () => {
+    expect(Object.keys(FX)).toHaveLength(25);
+    expect(Object.keys(FX).filter((k) => k.startsWith('ui_'))).toEqual(['ui_power_lines_receiver_label']);
     for (const [id, def] of Object.entries(FX)) expect(def.id).toBe(id);
     expect(FX_COMMON.tickMs).toBe(50);
     for (const k of Object.values(FX_COMMON.palette)) expect(PALETTE_KEYS.has(k)).toBe(true);
   });
 
+  const PROSE_HEX = new Set([
+    'ALL.FX.fx_base_print.background',
+    'ALL.FX.ui_power_lines_receiver_label.states.beforeSend.frame',
+  ]);
   it('every colour is a PALETTE key, no hex anywhere', () => {
     const bad: string[] = [];
     visit(ALL, 'ALL', (o, path) => {
       for (const [k, x] of Object.entries(o)) {
         if (typeof x !== 'string') continue;
         if (COLOR_FIELDS.has(k) && !PALETTE_KEYS.has(x)) bad.push(`${path}.${k}=${x}`);
+        // Prose with a hex in a non-colour field (reported to GRAF Assety, v1.3) is tolerated.
+        if (PROSE_HEX.has(`${path}.${k}`)) continue;
         if (k !== 'note' && /#[0-9a-f]{6}\b/i.test(x)) bad.push(`${path}.${k}=${x}`);
       }
     });
@@ -78,6 +85,7 @@ describe('FX data (assety-m1.md v1.0)', () => {
   it('every effect track has frames; times are positive multiples of 50 ms', () => {
     const bad: string[] = [];
     for (const def of Object.values(FX)) {
+      if (def.id.startsWith('ui_')) continue; // UI data block (window of the Power Lines terminal), no frames
       const tracks = fxTracks(def);
       expect(tracks.length, def.id).toBeGreaterThan(0);
       for (const { path, track } of tracks) {
@@ -179,5 +187,54 @@ describe('FX parameter names (mechaniki-m1.md v0.5)', () => {
       }
     });
     expect(bad).toEqual([]);
+  });
+
+  it('S16 closed: no gdDecisionSpecStale params; no death screen diffs (v1.3)', async () => {
+    const { FX_PARAMS, FX_SPEC_DIFFS } = await import('../src/data/fx-params');
+    const stale = Object.entries(FX_PARAMS)
+      .filter(([, d]) => (d.status as string) === 'gdDecisionSpecStale')
+      .map(([k]) => k);
+    expect(stale).toEqual([]);
+    expect(FX_PARAMS.DEATH_SCREEN_AUTO_MS.status).toBe('ok');
+    const death = FX_SPEC_DIFFS.filter((d) => d.field.startsWith('fx_death_screen'));
+    expect(death).toEqual([]); // v1.3: NEXT = tap / Enter only – button diff closed
+    expect(FX_SPEC_DIFFS.some((d) => d.field.includes('chargeTelegraph'))).toBe(true);
+  });
+
+  it('styl v1.5 §12 glyphs (Level Design)', async () => {
+    const { WORLD_GLYPHS, ENEMY_SIGNALS, PALETTE } = await import('../src/data/style');
+    expect(WORLD_GLYPHS.arenaGate).toMatchObject({
+      glyph: '\u2229',
+      color: 'descent',
+      bg: 'descentBg',
+    });
+    expect(PALETTE[WORLD_GLYPHS.note.color]).toBe('#E6EDF3');
+    expect(PALETTE[WORLD_GLYPHS.noteRead.color]).toBe('#56606B');
+    expect(WORLD_GLYPHS.terminalBase).toMatchObject({ color: 'safe', bg: 'evacBg', bold: true });
+    expect(PALETTE[WORLD_GLYPHS.evacClosed.color]).toBe('#56606B');
+    expect('bg' in WORLD_GLYPHS.evacClosed).toBe(false);
+    expect(PALETTE[WORLD_GLYPHS.liquidM1.color]).toBe('#4B5B7A');
+    expect(PALETTE[WORLD_GLYPHS.cableOffH.color]).toBe('#56606B');
+    expect(ENEMY_SIGNALS.chargeLane).toEqual({ glyph: '=', color: 'enemy', bg: 'telegraphBg' });
+  });
+
+  it('assety v1.3: entityId payloads, death screen input, cosmetic glitch RNG, unused base FX', async () => {
+    const { fxUsedInM1 } = await import('../src/data/fx');
+    expect(JSON.stringify(FX).includes('"attackerId"')).toBe(false);
+    expect(Object.keys(FX.fx_telegraph.triggerPayload as object)).toEqual([
+      'entityId',
+      'kind',
+      'cells',
+      'windupMs',
+    ]);
+    expect(FX_COMMON.payloadConvention?.entityId).toBeTruthy();
+    expect(FX.fx_death_screen.input).toMatchObject({ accept: ['tap', 'Enter'], edgeOnly: true });
+    expect(FX.fx_death_screen.input?.accept).not.toContain('ATK');
+    expect(FX.fx_szum_glitch.rng?.startsWith('cosmetic')).toBe(true);
+    const unused = Object.entries(FX)
+      .filter(([, d]) => !fxUsedInM1(d))
+      .map(([k]) => k)
+      .sort();
+    expect(unused).toEqual(['fx_base_cable_light', 'fx_base_lift_arrive', 'fx_base_terminal_new']);
   });
 });

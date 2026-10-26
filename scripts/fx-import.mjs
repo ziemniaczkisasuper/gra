@@ -18,14 +18,18 @@ const HEX = {
   '#3DDC97': 'safe', '#0F3326': 'evacBg', '#C9D1D9': 'text', '#2A2F36': 'descentBg',
   '#B08850': 'chest', '#56B4E9': 'rarity2', '#0E2A3F': 'rarity2Bg', '#FFB000': 'rarity3',
   '#3A2A00': 'rarity3Bg', '#4A1240': 'telegraphBg', '#3D0F2E': 'bossBg', '#3A3410': 'dataCoreBg',
-  '#2A323C': 'sectorOff', '#5A6573': 'floorHighContrast',
+  '#2A323C': 'sectorOff', '#5A6573': 'floorHighContrast', '#121821': 'uiPanel',
+};
+// Extra roles sharing a hex with a HEX entry (fx_common.palette names → same colour, other meaning).
+const ROLE_HEX = {
+  energy: '#FFE14D', descent: '#C9D1D9', rarity1: '#C9D1D9', hintFrame: '#8B98A5',
 };
 // Document palette names (fx_common.palette) → PaletteKey.
 const DOC_NAMES = {
   tracks: 'rails', liquid: 'hazardLiquid', safeCellBg: 'evacBg', descentCellBg: 'descentBg',
   crate: 'chest', rarity2CellBg: 'rarity2Bg', rarity3CellBg: 'rarity3Bg',
   telegraphTargetBg: 'telegraphBg', bossCellBg: 'bossBg', dataCoreCellBg: 'dataCoreBg',
-  sectorDark: 'sectorOff',
+  sectorDark: 'sectorOff', uiPanelBg: 'uiPanel',
 };
 const COLOR_KEYS = new Set(['fg', 'bg', 'litFg', 'outline', 'color', 'tokenFg']);
 
@@ -58,9 +62,8 @@ const common = byId.get('fx_common');
 common.palette = Object.fromEntries(
   Object.entries(common.palette).map(([n, hex]) => {
     const k = DOC_NAMES[n] ?? n;
-    if (HEX[hex.toUpperCase()] !== k && !(k === 'energy' && hex.toUpperCase() === '#FFE14D') &&
-        !(['descent', 'rarity1'].includes(k) && hex.toUpperCase() === '#C9D1D9'))
-      throw new Error(`palette ${n} ${hex} ≠ ${k}`);
+    const h = hex.toUpperCase();
+    if (HEX[h] !== k && ROLE_HEX[k] !== h) throw new Error(`palette ${n} ${hex} ≠ ${k}`);
     return [n, k];
   }),
 );

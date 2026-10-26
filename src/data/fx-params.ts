@@ -1,9 +1,11 @@
-// Parameter names referenced by the FX data (src/data/fx-m1.ts ← graf/assety-m1.md v1.2) and their
-// values per design/mechaniki-m1.md v0.5.2 (25.10.2026). LUZ / Pracownik 4.
+// Parameter names referenced by the FX data (src/data/fx-m1.ts ← graf/assety-m1.md v1.5) and their
+// values per design/mechaniki-m1.md v0.5.2 (25.10.2026, incl. the §2.16 table fix for R6 A). LUZ / Pracownik 4.
 // Gameplay owns the real constants (data/combat-m0.ts, data/mechanics-m0.ts) – this file only
 // documents what FX names mean, so a renderer hook can resolve string durations, and lists where
 // the GRAF document is behind the spec (FX_SPEC_DIFFS, to be fixed in assety-m1.md, not by hand
 // in the generated fx-m1.ts).
+
+import { COMBAT_EXTRAS } from './combat-m0';
 
 export type FxParamStatus =
   /** same name and value in mechaniki v0.5 */
@@ -17,11 +19,13 @@ export type FxParamStatus =
   /** not used in M1 (kept for M0) */
   | 'unusedInM1'
   /** follows a Game Director decision; the spec table (§2.16) still has the old value – S16 */
-  | 'gdDecisionSpecStale';
+  | 'gdDecisionSpecStale'
+  /** value from the GRAF data for a feature that waits for Mechaniki (not in the current spec) */
+  | 'pendingMechanics';
 
 export interface FxParamDef {
   /** Value per mechaniki-m1.md v0.5.2 / GD decisions (ms, cells, % …, or a text enum). */
-  value: number | string | Readonly<Record<string, number>>;
+  value: number | string | boolean | Readonly<Record<string, number>>;
   /** Allowed values of a text enum parameter (e.g. EVAC_ALERT_MOMENT). */
   allowed?: readonly string[];
   /** Old value still in the spec table (status gdDecisionSpecStale). */
@@ -63,14 +67,31 @@ export const FX_PARAMS = {
     status: 'unusedInM1',
     note: 'M0 only; no longer referenced by FX (v1.1). M1: DEATH_SCREEN_MIN_MS / DEATH_SCREEN_AUTO_MS.',
   },
-  DEATH_SCREEN_MIN_MS: { value: 1500, status: 'ok', note: 'fx_death_screen phase "locked"' },
+  /** Single source: data/combat-m0.ts (Gameplay). */
+  DEATH_SCREEN_MIN_MS: {
+    value: COMBAT_EXTRAS.DEATH_SCREEN_MIN_MS,
+    status: 'ok',
+    note: 'fx_death_screen phase "locked"; NEXT = tap / Enter only, new press (edge) after MIN (v1.3 input)',
+  },
+  /** Single source: data/combat-m0.ts (Gameplay). */
   DEATH_SCREEN_AUTO_MS: {
-    value: 5000,
-    status: 'stale',
-    note: 'v0.5.2 §2.7 (UI M8): manual CONTINUE only, auto transition removed (still in the §2.16 table). FX: durationMs 5000, phase "continue" 3500 ms.',
+    value: COMBAT_EXTRAS.DEATH_SCREEN_AUTO_MS,
+    status: 'ok',
+    note: 'GD decision (v0.5.2): auto transition after 5000 ms stays; auto-pause stops both clocks (MIN and AUTO). FX: durationMs 5000, phase "continue" 3500 ms.',
   },
   PRINT_ANIM_MS: { value: 600, status: 'ok', note: 'fx_base_print' },
   // Skills (§2.5, §2.16)
+  // Player pole swing (assety v1.5 §3a, fx_player_pole_swing: status "zależne od Mechanik v0.6")
+  POLE_ARC_RANGE: { value: 2, status: 'pendingMechanics', note: 'Mechaniki v0.6 (not in v0.5.2)' },
+  POLE_ARC_DEG: { value: 90, status: 'pendingMechanics', note: 'Mechaniki v0.6 (not in v0.5.2)' },
+  PLAYER_ATTACK_WINDUP_MS: { value: 100, status: 'renamed', specName: 'PLAYER_ATK_WINDUP_MS' },
+  PLAYER_ATTACK_CYCLE_MS: {
+    value: 400,
+    status: 'renamed',
+    specName: 'PLAYER_ATK_WINDUP_MS + PLAYER_ATK_COOLDOWN_MS',
+    note: 'derived: 100 + 300',
+  },
+  SWING_FX_MS: { value: 200, status: 'fxOnly', note: 'pole swing sweep 4 × 50 ms' },
   SK1_DASH_RANGE: { value: 3, status: 'ok' },
   SK1_DASH_IFRAMES_MS: { value: 200, status: 'ok' },
   SK1_DASH_COOLDOWN_MS: { value: 4000, status: 'ok' },
@@ -88,24 +109,21 @@ export const FX_PARAMS = {
   // Evacuation and lift (§2.9, §2.16) – EVAC_*_S are seconds like the spec; frame ms = S × 1000
   EVAC_CALL_HOLD_MS: {
     value: 1000,
-    status: 'gdDecisionSpecStale',
-    specValue: 1500,
-    note: 'decyzja GD R6, spec nieaktualny – S16: §2.9 prose v0.5.2 = 1,0 s, §2.16 table = 1500',
+    status: 'ok',
+    note: 'GD R6 A; §2.9 and the §2.16 table (mechaniki v0.5.2) agree since the table fix (S16 closed)',
   },
   EVAC_ARRIVE_S: { value: { 1: 5, 2: 7, 3: 9 }, status: 'ok' },
   EVAC_HOLD_S: { value: 10, status: 'ok', note: 'state "open" 10000 ms' },
   EVAC_RECALL_COOLDOWN_S: {
     value: 5,
-    status: 'gdDecisionSpecStale',
-    specValue: 15,
-    note: 'decyzja GD R6, spec nieaktualny – S16: §2.9 prose v0.5.2 = 5 s, §2.16 table = 15; state "departed" 5000 ms',
+    status: 'ok',
+    note: 'GD R6 A (was 15); §2.16 table updated (S16 closed); state "departed" 5000 ms',
   },
   EVAC_ALERT_MOMENT: {
     value: 'arrival',
     allowed: ['call', 'arrival'],
-    status: 'gdDecisionSpecStale',
-    specValue: 'call',
-    note: 'text enum. GD R6 A: alarm on liftArrived (fx_evac_shaft.states.open.alarm); §2.16 table still "call" – S16',
+    status: 'ok',
+    note: 'text enum. GD R6 A: alarm on liftArrived (fx_evac_shaft.states.open.alarm); §2.16 table = arrival (S16 closed)',
   },
   EVAC_ALERT_RADIUS: { value: 12, status: 'ok' },
   LIFT_DEPART_MS: {
@@ -132,6 +150,18 @@ export const FX_PARAMS = {
     specName: 'BOSS_SWING_WINDUP_MS / _RECOVERY_MS 800 / 1200',
   },
   BOSS_CHARGE_EVERY: { value: 4, status: 'ok' },
+  BOSS_CHARGE_SEEK_TRACK: {
+    value: true,
+    status: 'ok',
+    note: 'boss walks to the nearest track first; chargeTelegraph starts when it stands on "="',
+  },
+  BOSS_CHARGE_AXIS: {
+    value: 'horizontal',
+    allowed: ['horizontal'],
+    status: 'ok',
+    note: 'mechaniki v0.5.2 §2.11: the charge is always horizontal (no vertical variant)',
+  },
+  BOSS_CHARGE_BAND_ROWS: { value: 2, status: 'ok', note: '§2.11: lane = the 2 track rows' },
   BOSS_CHARGE_WINDUP_MS: { value: 900, status: 'ok' },
   BOSS_CHARGE_TICKS_PER_CELL: { value: 2, status: 'ok', note: 'Z12; charge frame 100 ms per cell' },
   BOSS_CHARGE_MS_PER_CELL: {
@@ -212,18 +242,41 @@ export const FX_SPEC_DIFFS: readonly {
 }[] = [
   {
     field:
-      'fx_death_screen.durationMs / frames[1] (phase "continue") / params.DEATH_SCREEN_AUTO_MS',
-    is: '5000 ms total, phase "continue" 3500 ms, auto transition',
+      'fx_boss_rail_guardian.states.chargeTelegraph / states.charge.band (+ fx_telegraph.timelines["900"] note)',
+    is: 'lane = 2 cells (horizontal charge) / 3 cells (vertical charge), steady "x" on telegraphBg; vertical variant described',
     should:
-      'no auto transition: phase "continue" holds until continuePressed; drop DEATH_SCREEN_AUTO_MS',
+      'charge is horizontal ONLY: lane = the 2 track rows, the 900 ms wind-up lights the WHOLE track; "=" in enemy on telegraphBg (#4A1240), steady; drop the vertical (3-cell) variant',
     source:
-      'mechaniki v0.5.2 §2.7 pt 3 ("Przejście tylko ręczne", UI M8); the §2.16 table still lists it – spec inconsistent',
+      'GD (level-m1 §10 pt 2), mechaniki v0.5.2 §2.11 ("Szarża jest zawsze pozioma, więc wariant pionowy (3 pola) nie istnieje", BOSS_CHARGE_SEEK_TRACK) + styl-ascii v1.5 §12',
   },
   {
-    field: 'fx_death_screen.frames[1].lines[M1_DEATH_BTN].input',
-    is: '["tap", "Enter", "ATK"]',
+    field: 'fx-m1 palette.liquid (assety palette "liquid" → hazardLiquid #9A7BFF, animated ~/≈)',
+    is: "M1 liquid '~' violet, animated",
     should:
-      '["tap", "Enter"] – spec: "tap albo Enter (Spacja nie, żeby trzymany atak nie przeskoczył ekranu)"; ATK = Space/J → confirm with UI/GD',
-    source: 'mechaniki v0.5.2 §2.7 pt 3',
+      "M1 '~' = passable decoration in #4B5B7A (style decorLiquid / WORLD_GLYPHS.liquidM1), no animation; violet only for real hazard after M1",
+    source: 'styl-ascii v1.5 §12, mechaniki v0.5.2 §2.11',
+  },
+  {
+    field:
+      'screen_base_m1 (17×9) legend "-" / "|" + cables.gridFragments / lightsAboveBase, fx_base_cable_light',
+    is: 'unlit cable = wall #8B98A5; one upgrade lights the side walls (cols 0/16, rows 2–6); top wall = 10 grid fragments',
+    should:
+      'unlit cable #56606B (cableOff), lit #FFE14D; Lights I = row 1 + stash wall, Lights II = side walls cols 0/28 rows 1–5 (# → lit |), Lights III = bottom wall row 6 + hall floor #3B4552 → #56606B (BASE_M1 from level-m1, 29 wide)',
+    source:
+      'styl-ascii v1.5 §12, level-m1.md §10 pt 11 / BASE_M1. NOTE: assety v1.3 marks screen_base_m1 / fx_base_cable_light "NIEUŻYWANE W M1" (base = menu-hub, mechaniki §2.14a) – GRAF / GD to decide whether the cables are drawn at all in M1',
+  },
+  {
+    field: 'fx_evac_shaft.states.departed (lift unavailable, recall cooldown) / closed lift',
+    is: "'<' safe green bold on background for 5000 ms (+ seconds counter); no 'closed' state",
+    should:
+      "closed '<' = evacClosed #56606B, no bg, no pulse; open = safe bold on evacBg + pulse + seconds counter",
+    source: 'styl-ascii v1.5 §12',
+  },
+  {
+    field: 'missing FX (new in styl v1.5 §12)',
+    is: 'none',
+    should:
+      "note read state (glyph '?' dims #E6EDF3 → #56606B); Scrapper burrow vanish: one '·' blink in #FF5FC8 next to the wall (none with Reduce motion); Vat Issue: 'Ω' pulses once per 1.5 s (Reduce motion: steady underlined cell)",
+    source: 'styl-ascii v1.5 §12',
   },
 ];

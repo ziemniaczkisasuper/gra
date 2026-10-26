@@ -37,7 +37,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('1. joystick', () => {
-  test('pojawia się pod kciukiem w lewej połowie i znika po puszczeniu', async ({ page, browserName }, info) => {
+  test('pojawia się pod kciukiem w lewej połowie i znika po puszczeniu', async ({
+    page,
+    browserName,
+  }, info) => {
     await openGame(page);
     const t = await touchDriver(page, browserName);
     const vw = page.viewportSize()!;
@@ -79,9 +82,15 @@ test.describe('1. joystick', () => {
       const last = got.at(-1);
       const dx = Math.sign(to.x - from.x);
       const dy = Math.sign(to.y - from.y);
-      if (!last || last.mx !== want.x || last.my !== want.y || dx !== want.x || dy !== want.y)
+      if (
+        !last ||
+        Math.sign(last.mx) !== want.x ||
+        Math.sign(last.my) !== want.y ||
+        dx !== want.x ||
+        dy !== want.y
+      )
         bad.push(
-          `sektor ${s} (${s * 45}°): akcja=${last ? `${last.mx},${last.my}` : 'brak'} ruch=${dx},${dy} oczekiwane=${want.x},${want.y}`,
+          `sektor ${s} (${s * 45}°): akcja=${last ? `${last.mx.toFixed(2)},${last.my.toFixed(2)}` : 'brak'} ruch=${dx},${dy} oczekiwane=${want.x},${want.y}`,
         );
     }
     expect(bad, bad.join('\n')).toEqual([]);
@@ -136,13 +145,25 @@ test.describe('wielodotyk', () => {
     const after = await samplesSince(page, n1);
     await t.up(1);
     const s = await samplesSince(page, n0);
-    expect(s.some((x) => x.attack && x.mx === 0 && x.my === 1), 'move+attack in the same tick').toBe(true);
-    expect(s.some((x) => x.windup > 0 || x.cooldown > 0), 'player swung (attackWindup/Cooldown)').toBe(true);
+    expect(
+      s.some((x) => x.attack && x.mx === 0 && x.my === 1),
+      'move+attack in the same tick',
+    ).toBe(true);
+    expect(
+      s.some((x) => x.windup > 0 || x.cooldown > 0),
+      'player swung (attackWindup/Cooldown)',
+    ).toBe(true);
     expect(after.length).toBeGreaterThan(1);
-    expect(after.every((x) => x.my === 1 && !x.attack), 'joystick keeps working after ATK lifted').toBe(true);
+    expect(
+      after.every((x) => x.my === 1 && !x.attack),
+      'joystick keeps working after ATK lifted',
+    ).toBe(true);
   });
 
-  test('4. palec joysticka przeciągnięty na prawą połowę zostaje joystickiem', async ({ page, browserName }, info) => {
+  test('4. palec joysticka przeciągnięty na prawą połowę zostaje joystickiem', async ({
+    page,
+    browserName,
+  }, info) => {
     await openGame(page);
     const t = await touchDriver(page, browserName);
     const vw = page.viewportSize()!;
@@ -162,7 +183,10 @@ test.describe('wielodotyk', () => {
     await t.up(1);
     const s = await samplesSince(page, n0);
     expect(s.some((x) => x.mx === 1)).toBe(true);
-    expect(s.every((x) => !x.attack), 'ATK must not fire').toBe(true);
+    expect(
+      s.every((x) => !x.attack),
+      'ATK must not fire',
+    ).toBe(true);
   });
 });
 
@@ -177,8 +201,14 @@ test('5. tap ATK atakuje', async ({ page, browserName }) => {
   await t.up(3); // tap shorter than one tick – latched
   await sleep(page, 400);
   const s = await samplesSince(page, n0);
-  expect(s.some((x) => x.attack), 'ActionState.attack after tap').toBe(true);
-  expect(s.some((x) => x.windup > 0 || x.cooldown > 0), 'player swung').toBe(true);
+  expect(
+    s.some((x) => x.attack),
+    'ActionState.attack after tap',
+  ).toBe(true);
+  expect(
+    s.some((x) => x.windup > 0 || x.cooldown > 0),
+    'player swung',
+  ).toBe(true);
   // Real tap (touchscreen API) as well.
   await sleep(page, 900); // past attack cooldown
   const n1 = await samplesCount(page);
@@ -214,7 +244,10 @@ test('6. [||] pauzuje, RESUME daje odliczanie 3-2-1', async ({ page, browserName
   info.annotations.push({ type: 'odliczanie', description: `${Math.round(ms)} ms` });
 });
 
-test('6b. palec trzymany na joysticku w chwili pauzy jest zerowany', async ({ page, browserName }) => {
+test('6b. palec trzymany na joysticku w chwili pauzy jest zerowany', async ({
+  page,
+  browserName,
+}) => {
   await openGame(page);
   const t = await touchDriver(page, browserName);
   await placePlayer(page, OPEN.x, OPEN.y);
@@ -225,14 +258,19 @@ test('6b. palec trzymany na joysticku w chwili pauzy jest zerowany', async ({ pa
   await fakeVisibility(page, 'hidden'); // pause while the thumb is held
   await fakeVisibility(page, 'visible');
   await expect.poll(() => mode(page)).toMatchObject({ mode: 'paused' });
-  await page.evaluate(() => (window as unknown as { __gra: { loop: { resume(): void } } }).__gra.loop.resume());
+  await page.evaluate(() =>
+    (window as unknown as { __gra: { loop: { resume(): void } } }).__gra.loop.resume(),
+  );
   await expect.poll(() => mode(page), { timeout: 3000 }).toEqual({ mode: 'running', reason: null });
   const n0 = await samplesCount(page);
   await t.move(1, at(p, 90, R)); // still the same, stale finger
   await sleep(page, 300);
   const s = await samplesSince(page, n0);
   await t.up(1);
-  expect(s.every((x) => x.mx === 0 && x.my === 0), 'stale finger ignored after pause').toBe(true);
+  expect(
+    s.every((x) => x.mx === 0 && x.my === 0),
+    'stale finger ignored after pause',
+  ).toBe(true);
   await expect(page.locator('.stick-base')).toBeHidden();
 });
 
@@ -248,7 +286,10 @@ test('7. auto-pauza przy visibilitychange (bez auto-wznowienia)', async ({ page 
   await shot(page, info, '07-auto-pauza');
 });
 
-test('7b. auto-pauza przy prawdziwym przełączeniu karty (Chromium)', async ({ page, browserName }) => {
+test('7b. auto-pauza przy prawdziwym przełączeniu karty (Chromium)', async ({
+  page,
+  browserName,
+}) => {
   test.skip(browserName !== 'chromium', 'WebKit: no real tab switching in headless mode');
   await openGame(page);
   const other = await page.context().newPage();
@@ -342,7 +383,10 @@ test.describe('10. brak przewijania / zoomu strony', () => {
     expect(ov).toBe('hidden');
   });
 
-  test('gesty: przesunięcie, pinch, podwójny tap (Chromium, CDP)', async ({ page, browserName }, info) => {
+  test('gesty: przesunięcie, pinch, podwójny tap (Chromium, CDP)', async ({
+    page,
+    browserName,
+  }, info) => {
     test.skip(browserName !== 'chromium', 'WebKit: no CDP – real gestures cannot be generated');
     await openGame(page);
     const t = await touchDriver(page, browserName);
@@ -359,10 +403,22 @@ test.describe('10. brak przewijania / zoomu strony', () => {
     const ok = { sx: 0, sy: 0, top: 0, scale: 1, vx: 0, vy: 0 };
     // swipes: map centre (canvas), HUD band (canvas under HUD), joystick zone, right half
     const swipes: [Pt, Pt][] = [
-      [{ x: vw.width / 2, y: vw.height / 2 }, { x: vw.width / 2, y: 10 }],
-      [{ x: vw.width * 0.4, y: 30 }, { x: vw.width * 0.4, y: vw.height - 10 }],
-      [{ x: vw.width * 0.2, y: vw.height * 0.7 }, { x: vw.width * 0.2, y: 5 }],
-      [{ x: vw.width * 0.7, y: vw.height * 0.4 }, { x: 5, y: vw.height * 0.4 }],
+      [
+        { x: vw.width / 2, y: vw.height / 2 },
+        { x: vw.width / 2, y: 10 },
+      ],
+      [
+        { x: vw.width * 0.4, y: 30 },
+        { x: vw.width * 0.4, y: vw.height - 10 },
+      ],
+      [
+        { x: vw.width * 0.2, y: vw.height * 0.7 },
+        { x: vw.width * 0.2, y: 5 },
+      ],
+      [
+        { x: vw.width * 0.7, y: vw.height * 0.4 },
+        { x: 5, y: vw.height * 0.4 },
+      ],
     ];
     for (const [a, b] of swipes) {
       await t.down(5, a);
@@ -383,7 +439,13 @@ test.describe('10. brak przewijania / zoomu strony', () => {
     expect(await read(), 'after pinch').toEqual(ok);
     // browser-level pinch gesture (synthesised by Chromium's gesture pipeline)
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Input.synthesizePinchGesture', { x: c.x, y: c.y, scaleFactor: 2, relativeSpeed: 800, gestureSourceType: 'touch' });
+    await cdp.send('Input.synthesizePinchGesture', {
+      x: c.x,
+      y: c.y,
+      scaleFactor: 2,
+      relativeSpeed: 800,
+      gestureSourceType: 'touch',
+    });
     expect(await read(), 'after synthesizePinchGesture').toEqual(ok);
     // double tap on the map
     await t.tap(c);
@@ -396,7 +458,10 @@ test.describe('10. brak przewijania / zoomu strony', () => {
 });
 
 test.describe('11. okno tekstu', () => {
-  test('NEXT / CLOSE działają, tap poza oknem nic nie robi, wznowienie bez odliczania', async ({ page, browserName }, info) => {
+  test('NEXT / CLOSE działają, tap poza oknem nic nie robi, wznowienie bez odliczania', async ({
+    page,
+    browserName,
+  }, info) => {
     await openGame(page);
     const t = await touchDriver(page, browserName);
     const vw = page.viewportSize()!;
@@ -414,13 +479,23 @@ test.describe('11. okno tekstu', () => {
     await shot(page, info, '11-okno-tekstu-1z3');
     // taps outside the window: joystick zone, ATK spot, top corner
     const win = await box(page, '.text-window');
-    const atk = centre(await box(page, '.atk-btn').catch(() => ({ x: vw.width - 60, y: vw.height - 60, width: 0, height: 0 })));
+    const atk = centre(
+      await box(page, '.atk-btn').catch(() => ({
+        x: vw.width - 60,
+        y: vw.height - 60,
+        width: 0,
+        height: 0,
+      })),
+    );
     const outside: Pt[] = [
       { x: 8, y: vw.height - 8 },
       { x: vw.width - 8, y: 8 },
       atk,
       { x: win.x + win.width / 2, y: Math.min(vw.height - 3, win.y + win.height + 6) },
-    ].filter((p) => !(p.x >= win.x && p.x <= win.x + win.width && p.y >= win.y && p.y <= win.y + win.height));
+    ].filter(
+      (p) =>
+        !(p.x >= win.x && p.x <= win.x + win.width && p.y >= win.y && p.y <= win.y + win.height),
+    );
     const n0 = await samplesCount(page);
     for (const p of outside) {
       await t.tap(p);
@@ -434,7 +509,10 @@ test.describe('11. okno tekstu', () => {
     await expect(page.locator('.stick-base')).toBeHidden();
     expect(await mode(page)).toEqual({ mode: 'paused', reason: 'text' });
     const sOut = await samplesSince(page, n0);
-    expect(sOut.every((x) => !x.attack && x.mx === 0 && x.my === 0), 'no input leaks under the window').toBe(true);
+    expect(
+      sOut.every((x) => !x.attack && x.mx === 0 && x.my === 0),
+      'no input leaks under the window',
+    ).toBe(true);
     // NEXT → page 2 → page 3 (NEXT hidden on the last page)
     await t.tap(centre(await box(page, '.text-next')));
     await expect(page.locator('.text-body')).toHaveText('Page two.');
@@ -444,11 +522,16 @@ test.describe('11. okno tekstu', () => {
     await shot(page, info, '11-okno-tekstu-3z3');
     await t.tap(centre(await box(page, '.text-close')));
     await expect(page.locator('.text-backdrop')).toBeHidden();
-    await expect.poll(() => mode(page), { timeout: 500 }).toEqual({ mode: 'running', reason: null });
+    await expect
+      .poll(() => mode(page), { timeout: 500 })
+      .toEqual({ mode: 'running', reason: null });
     expect((await events(page)).filter((e) => e.ev === 'countdown')).toEqual([]);
     // CLOSE in the middle of a multi-page text
     await page.evaluate(() =>
-      (window as unknown as { __gra: { openText(f: string[]): void } }).__gra.openText(['A.', 'B.']),
+      (window as unknown as { __gra: { openText(f: string[]): void } }).__gra.openText([
+        'A.',
+        'B.',
+      ]),
     );
     await t.tap(centre(await box(page, '.text-close')));
     await expect(page.locator('.text-backdrop')).toBeHidden();
@@ -458,14 +541,18 @@ test.describe('11. okno tekstu', () => {
   test('auto-pauza w trakcie czytania → po CLOSE odliczanie', async ({ page, browserName }) => {
     await openGame(page);
     const t = await touchDriver(page, browserName);
-    await page.evaluate(() => (window as unknown as { __gra: { openText(): void } }).__gra.openText());
+    await page.evaluate(() =>
+      (window as unknown as { __gra: { openText(): void } }).__gra.openText(),
+    );
     await fakeVisibility(page, 'hidden');
     await fakeVisibility(page, 'visible');
     await expect(page.locator('.text-window')).toBeVisible();
     expect(await mode(page)).toEqual({ mode: 'paused', reason: 'text' });
     await t.tap(centre(await box(page, '.text-close')));
     await expect.poll(async () => (await mode(page)).mode).toBe('countdown');
-    await expect.poll(() => mode(page), { timeout: 3000 }).toEqual({ mode: 'running', reason: null });
+    await expect
+      .poll(() => mode(page), { timeout: 3000 })
+      .toEqual({ mode: 'running', reason: null });
   });
 });
 
@@ -478,7 +565,11 @@ test.describe('12. gracz i HUD nie nachodzą na siebie', () => {
     expect(overlaps(hp, pause), 'HP vs [||]').toBe(false);
     expect(overlaps(hp, atk), 'HP vs ATK').toBe(false);
     expect(overlaps(pause, atk), '[||] vs ATK').toBe(false);
-    const W = await page.evaluate(() => (window as unknown as { __gra: { state: { map: { width: number; height: number } } } }).__gra.state.map);
+    const W = await page.evaluate(
+      () =>
+        (window as unknown as { __gra: { state: { map: { width: number; height: number } } } })
+          .__gra.state.map,
+    );
     const cells: [number, number][] = [
       [3, 3], // spawn
       [1, 1],
@@ -498,7 +589,13 @@ test.describe('12. gracz i HUD nie nachodzą na siebie', () => {
       const pb = await playerScreenBox(page);
       expect(pb, `player @ ${x},${y} visible on canvas`).not.toBeNull();
       const vw = page.viewportSize()!;
-      expect(pb!.x >= -0.5 && pb!.y >= -0.5 && pb!.x + pb!.width <= vw.width + 0.5 && pb!.y + pb!.height <= vw.height + 0.5, `player ${x},${y} on screen`).toBe(true);
+      expect(
+        pb!.x >= -0.5 &&
+          pb!.y >= -0.5 &&
+          pb!.x + pb!.width <= vw.width + 0.5 &&
+          pb!.y + pb!.height <= vw.height + 0.5,
+        `player ${x},${y} on screen`,
+      ).toBe(true);
       const r = (b: { x: number; y: number; width: number; height: number }) =>
         `[${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}×${Math.round(b.height)}]`;
       if (overlaps(pb!, hp)) hudHits.push(`@${x},${y} ${r(pb!)} vs HP ${r(hp)}`);
@@ -506,7 +603,8 @@ test.describe('12. gracz i HUD nie nachodzą na siebie', () => {
       if (overlaps(pb!, atk)) ctlHits.push(`@${x},${y} ${r(pb!)} vs ATK ${r(atk)}`);
       if (x === 1 && y === 1) await shot(page, info, '12-gracz-lewy-gorny-rog');
       if (x === W.width - 2 && y === 1) await shot(page, info, '12-gracz-prawy-gorny-rog');
-      if (x === W.width - 2 && y === W.height - 2) await shot(page, info, '12-gracz-prawy-dolny-rog');
+      if (x === W.width - 2 && y === W.height - 2)
+        await shot(page, info, '12-gracz-prawy-dolny-rog');
     }
     if (ctlHits.length)
       info.annotations.push({ type: 'info: gracz pod ATK', description: ctlHits.join('; ') });
@@ -517,4 +615,274 @@ test.describe('12. gracz i HUD nie nachodzą na siebie', () => {
     await openGame(page);
     await shot(page, info, '00-start');
   });
+});
+
+// ---- extra checks from sterowanie.md (beyond the 12-point list)
+
+test('3b. drugi palec w strefie ruchu nie przejmuje joysticka', async ({ page, browserName }) => {
+  await openGame(page);
+  const t = await touchDriver(page, browserName);
+  await placePlayer(page, OPEN.x, OPEN.y);
+  const p = await thumbStart(page);
+  await t.down(1, p);
+  await t.drag(1, p, at(p, 0, R * 0.9), 3); // east
+  const base0 = centre(await box(page, '.stick-base'));
+  const q = { x: p.x - 40, y: p.y - 60 };
+  await t.down(2, q);
+  await t.drag(2, q, at(q, 90, R), 3); // second finger drags south
+  await sleep(page, 200);
+  const base1 = centre(await box(page, '.stick-base'));
+  expect(
+    Math.hypot(base1.x - base0.x, base1.y - base0.y),
+    'base did not jump to finger 2',
+  ).toBeLessThan(2);
+  const n0 = await samplesCount(page);
+  await sleep(page, 200);
+  const s = await samplesSince(page, n0);
+  await t.up(2);
+  await t.up(1);
+  expect(
+    s.every((x) => x.mx === 1 && x.my === 0),
+    'still finger 1 direction',
+  ).toBe(true);
+});
+
+test('5b. pole trafienia ATK większe o ~8 px', async ({ page, browserName }) => {
+  await openGame(page);
+  const t = await touchDriver(page, browserName);
+  await placePlayer(page, OPEN.x, OPEN.y);
+  const a = await box(page, '.atk-btn');
+  const n0 = await samplesCount(page);
+  await t.down(4, { x: a.x - 5, y: a.y + a.height / 2 }); // 5 px left of the visible edge
+  await t.up(4);
+  await sleep(page, 300);
+  expect((await samplesSince(page, n0)).some((x) => x.attack)).toBe(true);
+});
+
+test('7c. zmiana rozmiaru / obrót ekranu = auto-pauza', async ({ page }) => {
+  await openGame(page);
+  const vw = page.viewportSize()!;
+  await page.setViewportSize({ width: vw.height, height: vw.width });
+  await expect.poll(() => mode(page)).toEqual({ mode: 'paused', reason: 'auto' });
+  await expect(page.locator('.overlay')).toBeVisible();
+});
+
+test('9c. PC: pierwszy dotyk pokazuje kontrolki, klawiatura je chowa', async ({
+  browser,
+}, info) => {
+  const vw = info.project.use.viewport!;
+  const ctx = await browser.newContext({ viewport: vw, hasTouch: false, isMobile: false });
+  const page = await ctx.newPage();
+  try {
+    await openGame(page);
+    await expect(page.locator('.touch-controls')).toBeHidden();
+    await page.evaluate(() =>
+      document.getElementById('game')!.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          pointerId: 7,
+          pointerType: 'touch',
+          bubbles: true,
+          clientX: 50,
+          clientY: 200,
+        }),
+      ),
+    );
+    await expect(page.locator('.touch-controls')).toBeVisible();
+    await page.keyboard.press('KeyD');
+    await expect(page.locator('.touch-controls')).toBeHidden();
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('10b. długie przytrzymanie: brak menu kontekstowego, brak zaznaczania tekstu', async ({
+  page,
+}) => {
+  await openGame(page);
+  const res = await page.evaluate(() =>
+    ['#game', '.stick-zone', '.atk-btn', '.pause-btn', '.hud-row.hp'].map((s) => {
+      const el = document.querySelector(s)!;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      el.dispatchEvent(ev);
+      const cs = getComputedStyle(el);
+      return {
+        s,
+        prevented: ev.defaultPrevented,
+        userSelect: cs.userSelect || (cs as unknown as Record<string, string>).webkitUserSelect,
+      };
+    }),
+  );
+  const bad = res.filter((r) => !r.prevented || r.userSelect !== 'none');
+  expect(bad, JSON.stringify(bad)).toEqual([]);
+});
+
+test('13. rozmiary i odstępy kontrolek wg sterowanie.md (≥48 dp, ≥16 dp od krawędzi)', async ({
+  page,
+}, info) => {
+  await openGame(page);
+  const vw = page.viewportSize()!;
+  const atk = await box(page, '.atk-btn');
+  const pause = await box(page, '.pause-btn');
+  const r = (n: number) => Math.round(n * 10) / 10;
+  const facts = {
+    atk: `${r(atk.width)}×${r(atk.height)}, prawo ${r(vw.width - atk.x - atk.width)}, dół ${r(vw.height - atk.y - atk.height)}`,
+    pause: `${r(pause.width)}×${r(pause.height)}, góra ${r(pause.y)}, prawo ${r(vw.width - pause.x - pause.width)}`,
+  };
+  info.annotations.push({ type: 'pomiary', description: JSON.stringify(facts) });
+  expect.soft(atk.width, 'ATK ≥ 48').toBeGreaterThanOrEqual(48);
+  expect.soft(pause.width, '[||] ≥ 48 wide').toBeGreaterThanOrEqual(48);
+  expect.soft(pause.height, '[||] ≥ 48 high').toBeGreaterThanOrEqual(48);
+  expect.soft(vw.width - atk.x - atk.width, 'ATK ≥ 16 from right edge').toBeGreaterThanOrEqual(16);
+  expect
+    .soft(vw.height - atk.y - atk.height, 'ATK ≥ 16 from bottom edge')
+    .toBeGreaterThanOrEqual(16);
+  expect.soft(pause.y, '[||] ≥ 16 from top edge').toBeGreaterThanOrEqual(16);
+  expect
+    .soft(vw.width - pause.x - pause.width, '[||] ≥ 16 from right edge')
+    .toBeGreaterThanOrEqual(16);
+  // Pause menu + text window buttons ≥ 48 px high
+  await page.evaluate(() =>
+    (window as unknown as { __gra: { openText(): void } }).__gra.openText(),
+  );
+  for (const s of ['.text-close', '.text-next'])
+    expect.soft((await box(page, s)).height, s).toBeGreaterThanOrEqual(48);
+  const close = await box(page, '.text-close');
+  const win = await box(page, '.text-window');
+  expect
+    .soft(
+      close.x + close.width > win.x + win.width * 0.6 && close.y < win.y + win.height * 0.4,
+      'CLOSE top-right of the window',
+    )
+    .toBe(true);
+  expect
+    .soft(win.y >= 0 && win.y + win.height <= vw.height, 'text window fits on screen')
+    .toBe(true);
+});
+
+// ---- added after the UI fixes of 25.10 21:40 (contextmenu, 16 px margins, compact pause menu)
+
+test('13b. marginesy ≥16 px także dla HP i w trybie lefty', async ({ page }) => {
+  await openGame(page, 'lefty=1');
+  const vw = page.viewportSize()!;
+  const hp = await box(page, '.hud-row.hp');
+  const atk = await box(page, '.atk-btn');
+  const pause = await box(page, '.pause-btn');
+  expect.soft(hp.x, 'HP ≥ 16 from left').toBeGreaterThanOrEqual(16);
+  expect.soft(hp.y, 'HP ≥ 16 from top').toBeGreaterThanOrEqual(16);
+  expect.soft(atk.x, 'lefty ATK ≥ 16 from left').toBeGreaterThanOrEqual(16);
+  expect
+    .soft(vw.height - atk.y - atk.height, 'lefty ATK ≥ 16 from bottom')
+    .toBeGreaterThanOrEqual(16);
+  expect.soft(atk.width, 'ATK ≥ 48').toBeGreaterThanOrEqual(48);
+  expect.soft(pause.y, '[||] ≥ 16 from top').toBeGreaterThanOrEqual(16);
+  expect.soft(vw.width - pause.x - pause.width, '[||] ≥ 16 from right').toBeGreaterThanOrEqual(16);
+});
+
+test('13c. menu pauzy mieści się bez przewijania, wszystkie przyciski widoczne', async ({
+  page,
+  browserName,
+}, info) => {
+  await openGame(page);
+  const t = await touchDriver(page, browserName);
+  await t.tap(centre(await box(page, '.pause-btn')));
+  await expect(page.locator('.overlay')).toBeVisible();
+  const r = await page.evaluate(() => {
+    const panel = document.querySelector('.overlay .panel') as HTMLElement;
+    const pr = panel.getBoundingClientRect();
+    const items = [...panel.querySelectorAll('button, textarea')].map((el) => {
+      const b = el.getBoundingClientRect();
+      return {
+        label: (el as HTMLElement).textContent?.trim() || el.tagName,
+        x: b.x,
+        y: b.y,
+        r: b.right,
+        b: b.bottom,
+        h: b.height,
+        hidden: b.width === 0 || b.height === 0,
+      };
+    });
+    return {
+      scroll: panel.scrollHeight - panel.clientHeight,
+      scrollW: panel.scrollWidth - panel.clientWidth,
+      panel: { x: pr.x, y: pr.y, r: pr.right, b: pr.bottom },
+      vw: { w: innerWidth, h: innerHeight },
+      items,
+    };
+  });
+  info.annotations.push({
+    type: 'menu pauzy',
+    description: JSON.stringify({ scroll: r.scroll, panel: r.panel, n: r.items.length }),
+  });
+  await shot(page, info, '13c-menu-pauzy-bez-przewijania');
+  expect.soft(r.scroll, 'panel needs no vertical scroll').toBeLessThanOrEqual(1);
+  expect.soft(r.scrollW, 'panel needs no horizontal scroll').toBeLessThanOrEqual(1);
+  expect
+    .soft(
+      r.panel.y >= 0 && r.panel.b <= r.vw.h && r.panel.x >= 0 && r.panel.r <= r.vw.w,
+      'panel inside viewport',
+    )
+    .toBe(true);
+  expect(r.items.length).toBeGreaterThanOrEqual(5);
+  for (const it of r.items) {
+    expect.soft(it.hidden, `${it.label} rendered`).toBe(false);
+    const inside =
+      it.y >= r.panel.y - 0.5 &&
+      it.b <= r.panel.b + 0.5 &&
+      it.x >= r.panel.x - 0.5 &&
+      it.r <= r.panel.r + 0.5;
+    const onScreen = it.y >= 0 && it.b <= r.vw.h && it.x >= 0 && it.r <= r.vw.w;
+    expect
+      .soft(
+        inside && onScreen,
+        `${it.label} fully visible [${Math.round(it.x)},${Math.round(it.y)}–${Math.round(it.r)},${Math.round(it.b)}]`,
+      )
+      .toBe(true);
+    if (it.label !== 'TEXTAREA')
+      expect.soft(it.h, `${it.label} ≥ 48 px high`).toBeGreaterThanOrEqual(48);
+  }
+  // RESUME still works from this layout
+  await t.tap(centre(await box(page, '.panel .resume')));
+  await expect.poll(() => mode(page), { timeout: 3000 }).toEqual({ mode: 'running', reason: null });
+});
+
+test('10c. contextmenu zablokowane na #game; pole kodu zapisu zachowuje menu i zaznaczanie', async ({
+  page,
+  browserName,
+}) => {
+  await openGame(page);
+  const t = await touchDriver(page, browserName);
+  const fire = (sel: string) =>
+    page.evaluate((s) => {
+      const el = document.querySelector(s)!;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      el.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    }, sel);
+  expect(await fire('#game'), '#game: menu blocked').toBe(true);
+  expect(await fire('body'), 'body: menu blocked').toBe(true);
+  // Save-code textarea lives in the pause menu
+  await t.tap(centre(await box(page, '.pause-btn')));
+  await expect(page.locator('.overlay')).toBeVisible();
+  const ta = page.locator('.overlay .panel textarea');
+  await expect(ta).toBeVisible();
+  expect(await fire('.overlay .panel textarea'), 'textarea: menu allowed (paste)').toBe(false);
+  const sel = await ta.evaluate((el: HTMLTextAreaElement) => {
+    el.value = 'GRA1j.eyJ0ZXN0IjoxfQ';
+    el.focus();
+    el.select();
+    const cs = getComputedStyle(el);
+    return {
+      userSelect: cs.userSelect || (cs as unknown as Record<string, string>).webkitUserSelect,
+      start: el.selectionStart,
+      end: el.selectionEnd,
+      len: el.value.length,
+    };
+  });
+  expect(sel.userSelect, 'textarea user-select').toBe('text');
+  expect(sel.end - sel.start, 'whole code selected').toBe(sel.len);
+  // Typing into it still works (keyboard not swallowed by the game)
+  await ta.fill('');
+  await ta.pressSequentially('abc');
+  await expect(ta).toHaveValue('abc');
+  expect((await mode(page)).mode, 'typing does not resume').toBe('paused');
 });

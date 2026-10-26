@@ -1,7 +1,11 @@
 // ALL visual style in one place: colours, glyphs, font.
-// Source: /workspace/GRA/graf/styl-ascii.md v1.3 (25.10.2026, GRAF / Concept i Styl; v1.2 = §10:
-// rarity names from Lore, enemy 'c' is M0-only; v1.3 = player drone named Buddy Drone).
-// Status: ZATWIERDZONY – approved by the Game Director (v1.2; v1.3 = drone name only). Swap values here only;
+// Source: /workspace/GRA/graf/styl-ascii.md v1.5 (25.10.2026, GRAF / Concept i Styl; v1.2 = §10:
+// rarity names from Lore, enemy 'c' is M0-only; v1.3 = player drone named Buddy Drone; v1.4 = §11
+// Power Lines terminal window (UI); v1.5 = §12 glyphs for Level Design: arena gate, note, BASE
+// terminal, closed lift, M1 liquid, base cables / Lights I–III).
+// Status: ZATWIERDZONY – approved by the Game Director (v1.2; v1.3 = drone name only; v1.4 approved;
+// v1.5 = GRAF decisions delegated by GD in level-m1.md §10, final unless GD decides otherwise).
+// Swap values here only;
 // no other file hard-codes colours or glyphs.
 //
 // Rules (agreed with PROG / Silnik):
@@ -57,9 +61,25 @@ export const PALETTE = {
   sectorOff: '#2A323C',
   /** §6: high-contrast mode floor. */
   floorHighContrast: '#5A6573',
+  // §12 (v1.5, Level Design). Same hex as `rails` under other roles on purpose (role = meaning).
+  /** Note '?' on the ground (unread). */
+  note: '#E6EDF3',
+  /** Note already read: glyph stays, dimmed. */
+  noteRead: '#56606B',
+  /** Closed lift '<' (no bg, no pulse). */
+  evacClosed: '#56606B',
+  /** M1 liquid '~' – passable decoration, no damage, no animation (hazardLiquid = post-M1 only). */
+  decorLiquid: '#4B5B7A',
+  /** Base cable not lit yet ('-' / '|'); lit = energy. */
+  cableOff: '#56606B',
+  /** Base main hall floor after Lights III ("w bazie jest jasno"). */
+  floorLit: '#56606B',
   // Not from GRAF – existing technical / UI values, kept here so no hex lives outside PALETTE.
-  /** DOM panel background (UI i Menu) – do akceptacji GRAF. */
+  /** DOM panel / touch control background (UI i Menu), pełny kolor – zaakceptowane przez
+   *  Concept i Styl (styl-ascii.md v1.6 §13, assety-m1.md v1.4). */
   uiPanel: '#121821',
+  /** assety v1.4 fx_common.palette hintFrame: frame of UI hints (= wall grey, other role). */
+  hintFrame: '#8B98A5',
   /** Debug colour for unknown tiles (never in a finished map). */
   debugMissing: '#FF00FF',
 } as const;
@@ -126,6 +146,7 @@ export const DUMMY_TELEGRAPH_GLYPH: GlyphStyle = {
 /** CSS colours used by the DOM UI layer. */
 export const UI_COLORS = {
   overlayBg: 'rgba(11, 15, 20, 0.78)',
+  /** Pause menu / window panel: #121821 pełny (styl-ascii.md v1.6 §13, assety-m1.md v1.4). */
   panelBg: PALETTE.uiPanel,
   border: PALETTE.floor,
   text: PALETTE.text,
@@ -260,14 +281,22 @@ export const UI_STYLE = {
   danger: PALETTE.enemy,
   panelBg: UI_COLORS.panelBg,
   overlayBg: UI_COLORS.overlayBg,
-  /** HUD plate under HP (dark, semi-transparent over the map) – do akceptacji GRAF. */
+  /** HUD plate under HP (dark, semi-transparent over the map) – zatwierdzone GRAF assety v1.3 §15. */
   hudBg: 'rgba(11, 15, 20, 0.9)',
-  /** Touch control fill (semi-transparent so the ASCII map stays visible) – do akceptacji GRAF. */
-  controlBg: 'rgba(18, 24, 33, 0.55)',
-  /** Pressed control fill – do akceptacji GRAF. */
+  /** Touch control fill: #121821 pełny (styl-ascii.md v1.6 §13, assety-m1.md v1.4). */
+  controlBg: PALETTE.uiPanel,
+  /** Pressed control fill – zatwierdzone GRAF assety v1.3 §15. */
   controlActiveBg: 'rgba(61, 220, 151, 0.18)',
-  /** Text window backdrop (dims the frozen world) – do akceptacji GRAF. */
+  /** Text window backdrop (dims the frozen world) – zatwierdzone GRAF assety v1.3 §15. */
   textBackdrop: 'rgba(11, 15, 20, 0.86)',
+  /** Tutorial hint bar plate (ui-m1.md §11.1) – zaakceptowane (assety v1.3 §15, v1.4; = hudBg). */
+  hintBg: 'rgba(11, 15, 20, 0.9)',
+  /** Tutorial hint bar / key-frame border – GRAF assety v1.3 §15.1 (#8B98A5 = wall). */
+  hintFrame: PALETTE.wall,
+  /** Button pulse / static highlight (Reduce motion: bg text on pulse) – zatwierdzone GRAF assety v1.3 §15. */
+  pulse: PALETTE.safe,
+  /** Tutorial freeze dim (T04), same α as fx_death_screen.dim – zatwierdzone GRAF assety v1.3 §15. */
+  tutDim: 'rgba(11, 15, 20, 0.72)',
 } as const;
 
 /** ASCII glyphs of the DOM UI (no graphic icons – Game Director, sterowanie.md). */
@@ -283,6 +312,9 @@ export const UI_GLYPHS = {
   /** Joystick knob and the 8 direction marks around the base (E, SE, S, ... clockwise). */
   stickKnob: '::',
   stickMarks: ['>', '\\', 'v', '/', '<', '\\', '^', '/'],
+  /** Edge arrows to the lift shaft (ui-m1.md §11.6), same order as stickMarks (E, SE, S, SW, W, NW,
+   *  N, NE) – GRAF assety v1.3 §15 pkt 3. Font subset has only '→' so far (GRAF → Silnik). */
+  arrows: ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'],
   /** Countdown separator (mechaniki 1.16 pt 7: "3 · 2 · 1"). */
   countdownSep: ' · ',
   textNext: '>',
@@ -460,6 +492,11 @@ export const ENEMY_SIGNALS = {
   rangedTargetCell: { glyph: '•', color: 'enemy', bg: 'descentBg', bold: true },
   /** Ranged blow marker (fx_strike variant "ranged"). */
   rangedStrike: { glyph: '*', color: 'enemy', bg: 'descentBg', bold: true },
+  /**
+   * §12 + GD (level-m1 §10 pt 2): boss charge lane = the 2 track rows, the whole lane lit for the
+   * entire 900 ms wind-up (and the run): '=' magenta on telegraphBg, steady, no blink.
+   */
+  chargeLane: { glyph: '=', color: 'enemy', bg: 'telegraphBg' },
   /** Enemy projectile (fallback '°'; never 'o'). */
   projectile: { glyph: '•', color: 'enemy' },
   /** §5 Noise glitch: 1-frame random glyph, same colour; never during '!'. */
@@ -475,6 +512,7 @@ export const ENEMY_SIGNALS = {
   strike: GlyphDef;
   rangedTargetCell: GlyphDef;
   rangedStrike: GlyphDef;
+  chargeLane: GlyphDef;
   projectile: GlyphDef;
   noiseGlitch: readonly string[];
   carrierUnderline: string;
@@ -495,9 +533,12 @@ export const WORLD_GLYPHS = {
   wall: { glyph: '#', color: 'wall' },
   rubble: { glyph: ',', color: 'rubble' },
   vegetation: { glyph: ';', color: 'vegetation' },
+  /** Dangerous liquid – AFTER M1 only (§12: violet stays reserved for real danger). */
   hazardLiquid: { glyph: '~', color: 'hazardLiquid' },
-  /** 2nd frame of the slow liquid animation. */
+  /** 2nd frame of the slow liquid animation (post-M1). */
   hazardLiquidAlt: { glyph: '≈', color: 'hazardLiquid' },
+  /** §12: '~' in M1 = passable decoration, no damage, NO animation. */
+  liquidM1: { glyph: '~', color: 'decorLiquid' },
   rails: { glyph: '=', color: 'rails' },
   /** v1.1: closed door changed from '+' to 'Π' (Med-Patch took '+'). */
   doorClosed: { glyph: 'Π', color: 'wall' },
@@ -505,23 +546,72 @@ export const WORLD_GLYPHS = {
   /** Puzzle terminal: inverted cell; solved → plain '&' in safe green. */
   terminal: { glyph: '&', color: 'background', bg: 'energy' },
   terminalSolved: { glyph: '&', color: 'safe' },
+  /** Lift open (10 s window): pulses, seconds counter above (fx_evac_shaft). */
   evac: { glyph: '<', color: 'safe', bg: 'evacBg', bold: true },
+  /** §12: lift closed / unavailable (blocks the player too): dim, no bg, no pulse. */
+  evacClosed: { glyph: '<', color: 'evacClosed' },
+  /** §12 LD 'G': Rail Guardian arena gate – same "passage" style as '>' but its own shape. M1: only this. */
+  arenaGate: { glyph: '∩', color: 'descent', bg: 'descentBg', bold: true },
+  /** §12: note on the ground; after reading the glyph stays, dimmed (noteRead). */
+  note: { glyph: '?', color: 'note', bold: true },
+  noteRead: { glyph: '?', color: 'noteRead', bold: true },
   descent: { glyph: '>', color: 'descent', bg: 'descentBg', bold: true },
   /** Chest (ASCII fallback '0'). */
   chest: { glyph: '■', color: 'chest' },
+  /** Predecessor's body; also body #46 (§12: disappears after the first reading, no own glyph). */
   oldCorpse: { glyph: '%', color: 'text' },
   playerCorpse: { glyph: '%', color: 'player', bg: 'playerHalo', bold: true },
   // Base
   reprintVat: { glyph: 'Ω', color: 'safe', bold: true },
   exchange: { glyph: '$', color: 'safe', bg: 'evacBg', bold: true },
   stash: { glyph: '≡', color: 'text' },
+  /** §12: BASE terminal (contracts) = base service colours; inverted yellow '&' = zone puzzles only. */
+  terminalBase: { glyph: '&', color: 'safe', bg: 'evacBg', bold: true },
   expeditionExit: { glyph: '>', color: 'descent', bg: 'descentBg', bold: true },
+  /** §12 base cables: not lit / lit (Lights I–III, BASE_LIGHTS). */
+  cableOffH: { glyph: '-', color: 'cableOff' },
+  cableOffV: { glyph: '|', color: 'cableOff' },
   upgradeLitH: { glyph: '-', color: 'energy' },
   upgradeLitV: { glyph: '|', color: 'energy' },
+  /** §12 Lights III: main hall floor brightened. */
+  floorLit: { glyph: '.', color: 'floorLit' },
   // Sector map
   sectorOff: { glyph: '·', color: 'sectorOff' },
   sectorOn: { glyph: '▓', color: 'energy' },
 } as const satisfies Record<string, GlyphDef>;
+
+/**
+ * §12: Level Design map markers are documentation only – letters are reserved for enemies.
+ * A = floor (player appears with the halo), G = arenaGate '∩', B = boss block, X = hidden shaft:
+ * wall '#' until the boss dies, then the lift '<'. 'O' (Scrapper burrow) = invisible wall in M1.
+ */
+export const LD_MARKERS = {
+  A: 'floor',
+  G: 'arenaGate',
+  B: 'boss',
+  X: 'wall',
+  O: 'wall',
+} as const satisfies Record<string, keyof typeof WORLD_GLYPHS | 'boss'>;
+/** X after the boss fight. */
+export const LD_HIDDEN_SHAFT_AFTER = 'evac' satisfies keyof typeof WORLD_GLYPHS;
+
+/**
+ * §12 base Lights upgrades (per level-m1.md BASE_M1, 29 wide). Lit cable = upgradeLit*, unlit = cableOff*.
+ * Each level adds visibly more yellow on the base map.
+ */
+export const BASE_LIGHTS = {
+  /** Lights I (per LD): cable in row 1 and the stash wall light up. */
+  1: { lights: 'row 1 + stash wall cables' },
+  /** Lights II: side walls of the main hall (cols 0 and 28, rows 1–5) turn from '#' into lit '|'. */
+  2: { wallToCable: { cols: [0, 28], rows: [1, 5] }, glyph: 'upgradeLitV' },
+  /** Lights III: bottom wall of the hall (row 6, '-' segments) lights up; hall floor → floorLit. */
+  3: { row: 6, glyph: 'upgradeLitH', floor: 'floorLit' },
+} as const;
+
+/** §12 Issue waiting at the Vat: 'Ω' pulses once per 1.5 s (Reduce motion: steady underlined cell). */
+export const VAT_ISSUE_PULSE_MS = 1500;
+/** §12 Scrapper vanishing into its (invisible) burrow: one blink of '·' next to the wall (none with Reduce motion). */
+export const BURROW_VANISH: GlyphDef = { glyph: '·', color: 'enemy' };
 
 /** Memory (seen, out of sight): same glyph, colour dimmed by this factor. */
 export const REMEMBERED_DIM = 0.5;

@@ -11,8 +11,8 @@
 // Sources (walka-m1.md §8): combat triggers come from getCombat(state).events of the last tick and
 // from diffs of the combat state (wind-up start / strike, ALERT, Shock, drone life), plus
 // getCombatDeath / getBossChargeLane; everything else from the bus (core/events FxTriggerEvents).
-// Not drawn here: layer 'screen' (death / lift screens – UI) and fx_float_text (already drawn by
-// combat/overlay.ts). Logic-owned results (wrecks '%', `after`, `sideEffects`, `with`) are not FX.
+// Not drawn here: layer 'screen' (death / lift / print screens – UI), effects whose status is not
+// approved (v1.4 'ZALEŻNE OD DECYZJI PRODUCENTA' – base map vs hub) and fx_float_text (already drawn by combat/overlay.ts). Logic-owned results (wrecks '%', `after`, `sideEffects`, `with`) are not FX.
 import { enemyDef, getBossChargeLane, peekCombat } from '../combat/combat';
 import type { CombatData } from '../combat/state';
 import type { EventBus, FxCell, FxTriggerEvents, GameEvents } from '../core/events';
@@ -20,6 +20,7 @@ import type { GameState } from '../core/game';
 import { Rng } from '../core/rng';
 import {
   FX,
+  fxUsedInM1,
   SCREEN_BASE_M1,
   type FxDef,
   type FxFrame,
@@ -112,8 +113,8 @@ export function framesFor(
     return partName ? (v as Record<string, FxReduceMotion>)[partName] : undefined;
   };
   const rm = pick(track.reduceMotion) ?? pick(defRm);
-  if (rm === undefined || rm === 'same') return own;
-  if (rm === 'skip') return null;
+  if (rm === undefined) return own;
+  if (typeof rm === 'string') return rm === 'skip' ? null : own; // 'same' / 'same (…)'
   return rm;
 }
 
@@ -170,7 +171,14 @@ interface Spawnable {
 export function buildSpawnables(fx: Readonly<Record<string, FxDef>> = FX): Spawnable[] {
   const out: Spawnable[] = [];
   for (const [fxId, def] of Object.entries(fx)) {
-    if (SKIP_EFFECTS.has(fxId) || def.layer === 'screen') continue;
+    // ui_* = UI data blocks (no FX); status gate: see fxUsedInM1 (data/fx.ts).
+    if (
+      SKIP_EFFECTS.has(fxId) ||
+      fxId.startsWith('ui_') ||
+      def.layer === 'screen' ||
+      !fxUsedInM1(def)
+    )
+      continue;
     const base = { fxId, startMs: 0 };
     const defEnds = parseTrigger(def.endsOn);
     if (def.frames)
@@ -353,9 +361,9 @@ export class FxEngine {
     } else if (
       typeof payload.kind === 'string' &&
       sp.key === sp.fxId &&
-      def.variants?.[payload.kind]
+      Array.isArray(def.variants?.[payload.kind])
     ) {
-      frames = def.variants[payload.kind];
+      frames = def.variants?.[payload.kind] as readonly FxFrame[];
     }
     if (!frames && framesFor(sp.track, rm, def.reduceMotion, sp.partName) === null) return;
     if (sp.stateGroup)
@@ -787,12 +795,6 @@ export const FX_BUS_EVENTS = [
   'bossSummon',
   'summonedSpawn',
   'bossDefeated',
-  'basePrint',
-  'baseArriveByLift',
-  'newContractAvailable',
-  'terminalOpened',
-  'gridFragmentLit',
-  'baseUpgradeBuilt',
 ] as const satisfies readonly (keyof FxTriggerEvents)[];
 
 interface Installed {
@@ -852,6 +854,9 @@ export function mergeCell(base: GlyphStyle, isEntity: boolean, c: FxDrawCell): G
 
 /** Steps the layer for one rendered frame: clock, combat source, engine → cells (no DOM). */
 export function fxFrame(fx: Installed, state: GameState, realMs: number): FxDrawCell[] {
+  // TODO(LUZ): when Gameplay commits setCombatFxActive(state, on) (combat/combat.ts), call it once
+  // per state here – setCombatFxActive(state, true) – so combat stops drawing its own fx entities
+  // (telegraph 'x', strike '*', dash trail) that this layer draws. Not in the code yet (checked).
   const now = fx.clock.tick(realMs, fx.loop.mode);
   for (const [n, p] of fx.source.poll(state, peekCombat(state), now, fx.engine.rng))
     fx.engine.onEvent(n, p, now);

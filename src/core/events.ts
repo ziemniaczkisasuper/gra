@@ -46,13 +46,6 @@ export interface FxTriggerEvents {
   bossSummon: { entityId: number; cells: readonly FxCell[] };
   summonedSpawn: { entityId: number };
   bossDefeated: { entityId: number; cell: FxCell };
-  // Base screen (UI / base module; base screen coordinates)
-  basePrint: Record<string, never>;
-  baseArriveByLift: Record<string, never>;
-  newContractAvailable: Record<string, never>;
-  terminalOpened: { cell: FxCell };
-  gridFragmentLit: { cells: readonly FxCell[] };
-  baseUpgradeBuilt: { cells: readonly FxCell[] };
 }
 
 export interface GameEvents extends FxTriggerEvents {

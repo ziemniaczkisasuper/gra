@@ -15,6 +15,10 @@ export const CSS_VARS: Readonly<Record<string, string>> = {
   '--ui-control-bg': UI_STYLE.controlBg,
   '--ui-control-active-bg': UI_STYLE.controlActiveBg,
   '--ui-text-backdrop': UI_STYLE.textBackdrop,
+  '--ui-hint-bg': UI_STYLE.hintBg,
+  '--ui-hint-frame': UI_STYLE.hintFrame,
+  '--ui-pulse': UI_STYLE.pulse,
+  '--ui-tut-dim': UI_STYLE.tutDim,
   '--ui-font': FONT.family,
   /** fx_death_screen.dim (background α 0.72) – same value as COMBAT_STYLE.text.dim. */
   '--ui-death-dim': COMBAT_STYLE.text.dim,

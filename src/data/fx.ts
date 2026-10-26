@@ -71,6 +71,12 @@ export interface FxCell {
   bold?: boolean;
 }
 
+/** v1.5 fx_player_pole_swing: style per phase index (cells carry `phase`; omitted = unchanged). */
+export interface FxPhaseStyle {
+  fg?: PaletteKey;
+  bold?: boolean;
+}
+
 export interface FxFrame {
   ms: FxMs;
   /** Cell layers. */
@@ -85,15 +91,19 @@ export interface FxFrame {
   dim?: { color: PaletteKey; alpha: number };
   /** Screen layer: text lines. */
   lines?: readonly FxLine[];
-  /** Named phase of a screen (fx_death_screen: 'locked' = no skip, 'continue' = CONTINUE shown). */
-  phase?: string;
+  /**
+   * Named phase of a screen (fx_death_screen: 'locked' = no skip, 'continue' = CONTINUE shown), or
+   * v1.5 a map phase index → style (fx_player_pole_swing sweep).
+   */
+  phase?: string | Readonly<Record<string, FxPhaseStyle | undefined>>;
   /** Cell to draw instead when the target cell is occupied (player / drone stays visible). */
   ifOccupied?: FxCell;
   readonly [extra: string]: unknown;
 }
 
 export type FxFrameList = readonly FxFrame[];
-export type FxReduceMotion = 'same' | 'skip' | FxFrameList;
+/** 'same (…)' = same with a comment (v1.3 ui_power_lines_receiver_label: 'same (statyczne)'). */
+export type FxReduceMotion = 'same' | `same (${string})` | 'skip' | FxFrameList;
 
 /** One playable track. */
 export interface FxTrack {
@@ -117,6 +127,8 @@ export interface FxTrack {
 
 export interface FxAnchorRule {
   case: string;
+  /** v1.3: condition in payload terms (killer.entityId / killer.strikeOrigin). */
+  when?: string;
   anchor: string;
   /** 'skip' = draw nothing in this case. */
   action?: 'skip' | string;
@@ -136,13 +148,35 @@ export interface FxAlarm {
   note?: string;
 }
 
+/** v1.4 variant as a composition (fx_base_print.variants.map / hub). */
+export interface FxVariant extends FxTrack {
+  note?: string;
+  parts?: readonly (FxTrack & { name: string })[];
+}
+
 /** An effect: a single track and/or composite parts / states / timelines / variants. */
+/** v1.3 fx_death_screen.input: NEXT accepts only these inputs, as a new press (edge) after MIN. */
+export interface FxInput {
+  accept: readonly string[];
+  reject: readonly string[];
+  edgeOnly: boolean;
+  note?: string;
+}
+
 export interface FxDef extends FxTrack {
   id: string;
+  /** v1.3: 'NIEUŻYWANE W M1 …' = not used in M1 (base = menu-hub) – the FX layer skips it. */
+  status?: string;
+  /** v1.3 fx_szum_glitch: 'cosmetic …' = separate, non-saved RNG (never the game PRNG). */
+  rng?: string;
+  input?: FxInput;
+  /** v1.3: what auto-pause does to the effect's clocks. */
+  autoPause?: string;
   parts?: readonly (FxTrack & { name: string })[];
   states?: Readonly<Record<string, FxTrack>>;
   timelines?: Readonly<Record<string, FxFrameList>>;
-  variants?: Readonly<Record<string, FxFrameList>>;
+  /** Alternative frame lists (fx_strike.ranged) or, v1.4, alternative compositions (fx_base_print map / hub). */
+  variants?: Readonly<Record<string, FxFrameList | FxVariant>>;
 }
 
 /** fx_common: tick, layers, anchors, priorities and the document's colour names → PaletteKey. */
@@ -156,6 +190,10 @@ export interface FxCommon {
   anchors: Readonly<Record<string, string>>;
   priorities: Readonly<Record<string, number>>;
   reduceMotionRule: string;
+  /** v1.3: payload field names (= core/events.ts FxTriggerEvents, walka-m1.md §8). */
+  payloadConvention?: Readonly<Record<string, string>>;
+  /** v1.4: UI colours that are not palette entries (rgba overlays) – data for UI, kept as is. */
+  uiColors?: Readonly<Record<string, string>>;
 }
 
 export const FX_COMMON: FxCommon = FX_COMMON_DATA;
@@ -164,7 +202,7 @@ export const FX_GLYPHS_M1: Readonly<Record<string, unknown>> = FX_GLYPHS_M1_DATA
 /** screen_base_m1: base screen layout (17×9 rows + legend) – UI / Level Design data. */
 export const SCREEN_BASE_M1: Readonly<Record<string, unknown>> = SCREEN_BASE_M1_DATA;
 
-/** Effect registry (graf/assety-m1.md v1.0). Keys = document ids. */
+/** Effect registry (graf/assety-m1.md v1.3). Keys = document ids. */
 export const FX: Readonly<Record<string, FxDef>> = FX_M1_DATA;
 export type FxId = keyof typeof FX_M1_DATA;
 
@@ -181,7 +219,23 @@ export function fxTracks(def: FxDef): { path: string; track: FxTrack }[] {
   }
   for (const [k, f] of Object.entries(def.timelines ?? {}))
     out.push({ path: `${def.id}.timelines.${k}`, track: { ...def, frames: f } });
-  for (const [k, f] of Object.entries(def.variants ?? {}))
-    out.push({ path: `${def.id}.variants.${k}`, track: { ...def, frames: f } });
+  for (const [k, f] of Object.entries(def.variants ?? {})) {
+    if (Array.isArray(f)) {
+      out.push({ path: `${def.id}.variants.${k}`, track: { ...def, frames: f as FxFrameList } });
+      continue;
+    }
+    const v = f as FxVariant;
+    if (v.frames) out.push({ path: `${def.id}.variants.${k}`, track: v });
+    for (const p of v.parts ?? [])
+      out.push({ path: `${def.id}.variants.${k}.parts.${p.name}`, track: p });
+  }
   return out;
 }
+
+/**
+ * Whether the FX layer may fire an effect: no status, or 'ZATWIERDZONE …'. v1.4 'ZALEŻNE OD DECYZJI
+ * PRODUCENTA' (walked base vs hub, S19) and v1.3 'NIEUŻYWANE W M1' are reference only until the
+ * status changes in the document.
+ */
+export const fxUsedInM1 = (def: { status?: string }): boolean =>
+  typeof def.status !== 'string' || def.status.startsWith('ZATWIERDZONE');

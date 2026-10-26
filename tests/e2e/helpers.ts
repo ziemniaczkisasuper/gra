@@ -152,7 +152,9 @@ export async function samplesSince(page: Page, from: number): Promise<Sample[]> 
 export async function samplesCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as E2EWindow).__e2e!.samples.length);
 }
-export async function events(page: Page): Promise<{ ev: string; p: Record<string, unknown>; t: number }[]> {
+export async function events(
+  page: Page,
+): Promise<{ ev: string; p: Record<string, unknown>; t: number }[]> {
   return page.evaluate(() => (window as unknown as E2EWindow).__e2e!.events.slice());
 }
 
@@ -186,7 +188,11 @@ export async function playerScreenBox(page: Page): Promise<Box | null> {
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
         const i = (y * w + x) * 4;
-        if (Math.abs(d[i]! - r) <= 2 && Math.abs(d[i + 1]! - g) <= 2 && Math.abs(d[i + 2]! - b) <= 2) {
+        if (
+          Math.abs(d[i]! - r) <= 2 &&
+          Math.abs(d[i + 1]! - g) <= 2 &&
+          Math.abs(d[i + 2]! - b) <= 2
+        ) {
           if (x < x0) x0 = x;
           if (y < y0) y0 = y;
           if (x > x1) x1 = x;
@@ -228,11 +234,19 @@ export interface TouchDriver {
 class CdpTouch implements TouchDriver {
   readonly kind = 'cdp' as const;
   private pts = new Map<number, Pt>();
-  private last: Pt | null = null;
+  private lastDragEnd = 0;
+  private dragged = new Set<number>();
   constructor(private readonly s: CDPSession) {}
 
   private list() {
-    return [...this.pts].map(([id, p]) => ({ x: p.x, y: p.y, id, radiusX: 8, radiusY: 8, force: 1 }));
+    return [...this.pts].map(([id, p]) => ({
+      x: p.x,
+      y: p.y,
+      id,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    }));
   }
   async down(id: number, p: Pt) {
     this.pts.set(id, p);
@@ -240,25 +254,36 @@ class CdpTouch implements TouchDriver {
   }
   async move(id: number, p: Pt) {
     this.pts.set(id, p);
-    this.last = p;
     await this.s.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: this.list() });
   }
   async up(id: number) {
+    const p = this.pts.get(id);
+    if (!p) return;
     this.pts.delete(id);
-    // Points missing from the list are released; with none left → touchEnd.
-    if (this.pts.size)
-      await this.s.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: this.list() });
-    else await this.s.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    if (this.dragged.delete(id)) this.lastDragEnd = Date.now();
+    // CDP: touchEnd releases exactly the listed points (checked empirically, Chromium 1.64);
+    // the other fingers stay down.
+    await this.s.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [{ x: p.x, y: p.y, id, radiusX: 8, radiusY: 8, force: 1 }],
+    });
   }
   async tap(p: Pt) {
+    // Chromium's tap suppression drops a tap that comes < ~300 ms after a drag/fling ended
+    // (browser behaviour, also on Android) – wait it out so button taps produce a click.
+    const wait = 400 - (Date.now() - this.lastDragEnd);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     const id = 90 + this.pts.size;
     await this.down(id, p);
     await this.up(id);
   }
   async drag(id: number, from: Pt, to: Pt, steps = 6) {
+    this.dragged.add(id);
     for (let i = 1; i <= steps; i++)
-      await this.move(id, { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps });
-    void this.last;
+      await this.move(id, {
+        x: from.x + ((to.x - from.x) * i) / steps,
+        y: from.y + ((to.y - from.y) * i) / steps,
+      });
   }
 }
 
@@ -268,7 +293,9 @@ class SyntheticTouch implements TouchDriver {
   private fire(type: string, id: number, p: Pt | null) {
     return this.page.evaluate(
       ({ type, id, p }) => {
-        const w = window as unknown as { __e2eTargets?: Map<number, { t: Element; p: { x: number; y: number } }> };
+        const w = window as unknown as {
+          __e2eTargets?: Map<number, { t: Element; p: { x: number; y: number } }>;
+        };
         const map = (w.__e2eTargets ??= new Map());
         let entry = map.get(id);
         if (type === 'pointerdown') {
@@ -312,7 +339,10 @@ class SyntheticTouch implements TouchDriver {
   }
   async drag(id: number, from: Pt, to: Pt, steps = 6) {
     for (let i = 1; i <= steps; i++)
-      await this.move(id, { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps });
+      await this.move(id, {
+        x: from.x + ((to.x - from.x) * i) / steps,
+        y: from.y + ((to.y - from.y) * i) / steps,
+      });
   }
 }
 

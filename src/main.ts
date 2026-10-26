@@ -19,6 +19,7 @@ import {
 } from './render/camera';
 import { GlyphRenderer } from './render/glyph-renderer';
 import { screenToCell } from './render/screen';
+import { installFxLayer } from './render/fx-layer';
 import { renderScene } from './render/scene';
 import {
   getCombatHud,
@@ -160,7 +161,7 @@ const loop = new GameLoop({
   requestFrame: (cb) => requestAnimationFrame(cb),
   cancelFrame: (id) => cancelAnimationFrame(id),
 });
-void import('./render/fx-layer').then((m) => m.installFxLayer(bus, loop, reduceMotion()));
+installFxLayer(bus, loop, reduceMotion()); // LUZ: FX layer (drawn in render/scene.ts)
 
 function save(trigger: SaveTrigger): void {
   const data = snapshot(state, Date.now());
