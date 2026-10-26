@@ -18,12 +18,7 @@ import { registerSaveSection } from '../save/sections';
 import { createInventoryState, getInventory, INVENTORY_SECTION } from './inventory';
 import type { GearInfo, InvItem, InventorySave, InventoryState } from './types';
 
-export {
-  getInventory,
-  setInventory,
-  INVENTORY_SECTION,
-  createInventoryState,
-} from './inventory';
+export { getInventory, setInventory, INVENTORY_SECTION, createInventoryState } from './inventory';
 
 /** Pure JSON copy of the state (v: 1). */
 export function serializeInventory(s: InventoryState): InventorySave {
@@ -47,6 +42,13 @@ const isInt = (x: unknown, min = 0, max = 2 ** 31): x is number =>
   typeof x === 'number' && Number.isInteger(x) && x >= min && x <= max;
 const RARITY = new Set([1, 2, 3]);
 const DEPTH = new Set([1, 2, 3]);
+const GEAR_BASE_IDS: ReadonlySet<string> = new Set([
+  'WEAPON_MELEE_DMG',
+  'WEAPON_RANGED_DMG',
+  'ARMOR_BASE',
+  'MODULE_HP_BASE',
+  'TOOL_SALVAGE_PCT',
+]);
 
 function readGear(raw: unknown, slot: ItemSlot | undefined, at: string): GearInfo {
   if (!isObj(raw)) throw new SaveError(`${at}: missing gear data`);
@@ -67,10 +69,27 @@ function readGear(raw: unknown, slot: ItemSlot | undefined, at: string): GearInf
   if (raw.affixes !== undefined) {
     if (!Array.isArray(raw.affixes)) throw new SaveError(`${at}: bad affixes`);
     g.affixes = raw.affixes.map((a, i) => {
-      if (!isObj(a) || typeof a.id !== 'string' || typeof a.value !== 'number' || !Number.isFinite(a.value))
+      if (
+        !isObj(a) ||
+        typeof a.id !== 'string' ||
+        typeof a.value !== 'number' ||
+        !Number.isFinite(a.value)
+      )
         throw new SaveError(`${at}: bad affix ${i}`);
       return { id: a.id, value: a.value };
     });
+  }
+  if (raw.base !== undefined) {
+    if (!isObj(raw.base) || typeof raw.base.id !== 'string' || !GEAR_BASE_IDS.has(raw.base.id))
+      throw new SaveError(`${at}: bad gear base`);
+    if (!isInt(raw.base.value, 0, 10_000)) throw new SaveError(`${at}: bad gear base value`);
+    g.base = { id: raw.base.id, value: raw.base.value };
+  }
+  if (raw.weaponKind !== undefined) {
+    if (slot !== 'weapon') throw new SaveError(`${at}: weaponKind on a non-weapon`);
+    if (raw.weaponKind !== 'melee' && raw.weaponKind !== 'ranged')
+      throw new SaveError(`${at}: bad weaponKind`);
+    g.weaponKind = raw.weaponKind;
   }
   return g;
 }

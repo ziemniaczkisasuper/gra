@@ -29,7 +29,15 @@ import {
   EVAC_TILE,
   enemyDiagMs,
 } from '../data/combat-m0';
-import { ITEM_DEFS } from '../data/inventory-m1';
+import { getInventory, INVENTORY_SECTION, onDeath, setInventory } from '../inventory/inventory';
+import {
+  clearMedPatch,
+  equippedWeaponKind,
+  handleMedPatchInput,
+  rollWeaponDamage,
+  syncPlayerArmor,
+  tickMedPatch,
+} from './gear-stats';
 import { MAPS } from '../data/maps';
 import {
   COMBAT_STYLE,
@@ -590,15 +598,12 @@ function asDir8(d: Cell): Dir8 {
 }
 
 /**
- * Equipped weapon. No inventory section, or anything that is not `weaponType: 'ranged'`,
- * is melee (a fresh game wears the Issue Pole).
+ * Equipped weapon. No inventory section, or anything that is not ranged,
+ * is melee (a fresh game wears the Issue Pole). A loot weapon's `weaponKind` wins
+ * over the shared item id.
  */
 export function equippedWeaponType(state: GameState): 'melee' | 'ranged' {
-  const inv = state.sections.inventory as
-    | { gear?: { weapon?: { itemId?: string } | null } }
-    | undefined;
-  const id = inv?.gear?.weapon?.itemId;
-  return id && ITEM_DEFS[id]?.weaponType === 'ranged' ? 'ranged' : 'melee';
+  return equippedWeaponKind(state);
 }
 
 export function combatPlayerPhase(state: GameState, actions: ActionState): void {
@@ -639,6 +644,9 @@ export function combatPlayerPhase(state: GameState, actions: ActionState): void 
     pc.skillQueue = null;
     return;
   }
+
+  // §2.13 Med-Patch (Q / heal). Does not consume the attack tick.
+  handleMedPatchInput(state, c.cfg, Boolean(actions.heal), pc);
 
   // §2.5 skills (M1 flag). A started skill consumes the tick (no attack start, Dash = the move).
   if (c.cfg.SKILLS_ENABLED && skillPhase(state, c, actions, skillPressed)) return;
@@ -1162,6 +1170,8 @@ export function combatWorldPhase(state: GameState, actions: ActionState): void {
   if (c.death) {
     stepDeath(state, c);
   } else {
+    syncPlayerArmor(state, c.player); // equipped armour (Issue Suit = 0 when nothing else)
+    tickMedPatch(state, c.player); // §2.13 +40 HP over 2 s
     applyPlayerMoveAffix(state, c); // engine just moved the player (step 2) – §2.5 speed affix
     bossArenaCheck(state, c); // §2.11 leaving the arena resets the boss (temporary trigger)
     bossAi(state, c); // 3 – the boss first (takes its melee token before the enemies)
@@ -1439,9 +1449,7 @@ function grantAttackTokens(state: GameState, c: CombatData, requests: AttackRequ
     const i = c.tokenPriority.indexOf(id);
     return i < 0 ? 1e9 : i;
   };
-  requests.sort(
-    (a, b) => rank(a.e.id) - rank(b.e.id) || a.dist - b.dist || a.order - b.order,
-  );
+  requests.sort((a, b) => rank(a.e.id) - rank(b.e.id) || a.dist - b.dist || a.order - b.order);
   for (const r of requests) {
     if (c.cfg.ATTACK_TOKENS_ENABLED) {
       const def = typeOf(c, r.ec);
@@ -1633,7 +1641,7 @@ function resolveSwing(state: GameState, c: CombatData, dir: Dir8): void {
   const rng = combatRng(state);
   const priority: number[] = [];
   for (const e of victims) {
-    const base = rng.int(cfg.PLAYER_DMG_MIN, cfg.PLAYER_DMG_MAX);
+    const base = rollWeaponDamage(state, cfg, rng, 'melee');
     const crit = rng.next() < cfg.PLAYER_CRIT_CHANCE;
     const dmg = computeDamage(base, { crit, momentum }, cfg);
     const ec = c.enemies.get(e.id);
@@ -1648,17 +1656,13 @@ function resolveSwing(state: GameState, c: CombatData, dir: Dir8): void {
  * Ranged fire. At the projectile cap the shot is skipped (momentum kept) but the cooldown
  * already started, so holding fire does not spin. Damage is rolled now.
  */
-function tryFire(
-  state: GameState,
-  c: CombatData,
-  a: { dir: Dir8; target: Cell | null },
-): void {
+function tryFire(state: GameState, c: CombatData, a: { dir: Dir8; target: Cell | null }): void {
   if (c.projectiles.length >= c.cfg.RANGED_MAX_PROJECTILES) return;
   const p = state.player;
   const pc = c.player;
   const momentum = pc.momentum > 0;
   const rng = combatRng(state);
-  const base = rng.int(c.cfg.RANGED_DMG_MIN, c.cfg.RANGED_DMG_MAX);
+  const base = rollWeaponDamage(state, c.cfg, rng, 'ranged');
   const crit = rng.next() < c.cfg.PLAYER_CRIT_CHANCE;
   const dmg = computeDamage(base, { crit, momentum }, c.cfg);
   const shot = buildShot(state.map, cellOf(p), a.dir, c.cfg.RANGED_RANGE, a.target);
@@ -1867,6 +1871,15 @@ function resetEnemy(state: GameState, c: CombatData, e: Entity, ec: EnemyCombat)
   e.attackCooldown = 0;
 }
 
+/** §2.7: one call per death. No inventory section (M0 arena) → nothing to drop. */
+function dropRunLoot(state: GameState, c: CombatData): void {
+  if (state.sections[INVENTORY_SECTION] === undefined) return;
+  const res = onDeath(getInventory(state));
+  setInventory(state, res.state);
+  syncPlayerArmor(state, c.player);
+  clearMedPatch(state);
+}
+
 function killPlayer(state: GameState, c: CombatData): void {
   const p = state.player;
   c.player.hp = 0;
@@ -1883,6 +1896,7 @@ function killPlayer(state: GameState, c: CombatData): void {
   body.solid = false;
   state.entities.unshift(body); // drawn under everything else
   c.stats.deaths++;
+  dropRunLoot(state, c);
   c.death = { freezeLeft: c.t.deathFreeze, respawnLeft: c.t.respawn };
   const hits = c.recentHits.map((h) => ({ ...h, from: { ...h.from }, aim: { ...h.aim } }));
   const last = hits[hits.length - 1];

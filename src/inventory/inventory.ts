@@ -9,6 +9,7 @@ import type { ContractReward } from '../data/contracts-m1';
 import {
   BACKPACK_SLOTS,
   COPPER_ITEM_ID,
+  DATA_CORE_ITEM_ID,
   GEAR_ITEM_IDS,
   GEAR_SELL_VALUE,
   GEAR_SLOTS,
@@ -16,8 +17,10 @@ import {
   ITEM_DEFS,
   MEDPATCH_ITEM_ID,
   MEDPATCH_MAX,
+  SCRAP_ITEM_ID,
   START_CREDITS,
   STASH_SLOTS_BY_LIGHTS,
+  medPatchTopUpFor,
   type ItemDef,
   type LightsLevel,
 } from '../data/inventory-m1';
@@ -27,6 +30,7 @@ import type {
   DeathLoss,
   DeathResult,
   DropResult,
+  GearInfo,
   GearView,
   InvFailReason,
   InvItem,
@@ -100,7 +104,13 @@ function defOf(it: InvItem): ItemDef {
 const copyItem = (it: InvItem): InvItem => ({
   ...it,
   ...(it.gear
-    ? { gear: { ...it.gear, ...(it.gear.affixes ? { affixes: it.gear.affixes.map((a) => ({ ...a })) } : {}) } }
+    ? {
+        gear: {
+          ...it.gear,
+          ...(it.gear.base ? { base: { ...it.gear.base } } : {}),
+          ...(it.gear.affixes ? { affixes: it.gear.affixes.map((a) => ({ ...a })) } : {}),
+        },
+      }
     : {}),
 });
 
@@ -256,6 +266,18 @@ const validIndex = (arr: readonly unknown[], i: number) =>
 
 // ---- read-only views ----------------------------------------------------------------------------
 
+/** Numbers the zone HUD prints. `atRisk` is `computeAtRisk()` (the same value every tick). */
+export interface InventoryHudModel {
+  atRisk: number;
+  bagUsed: number;
+  bagMax: number;
+}
+
+export function inventoryHudModel(state: InvSource): InventoryHudModel {
+  const run = getRunInventory(state);
+  return { atRisk: run.atRisk, bagUsed: run.usedSlots, bagMax: run.slotsMax };
+}
+
 /** HUD / bag screen / death screen data (agreed API with Gameplay and UI). */
 export function getRunInventory(state: InvSource): RunInventory {
   const s = src(state);
@@ -350,6 +372,7 @@ export function pickupItem(state: InventoryState, input: PickupInput): PickupRes
       const it: InvItem = { itemId: d.id, count: 1 };
       if (d.category === 'gear' && input.gear) {
         it.gear = { ...input.gear, uid: s.nextUid++ };
+        if (input.gear.base) it.gear.base = { ...input.gear.base };
         if (input.gear.affixes) it.gear.affixes = input.gear.affixes.map((a) => ({ ...a }));
       }
       if (input.contractId !== undefined) it.contractId = input.contractId;
@@ -375,6 +398,74 @@ export function pickupItem(state: InventoryState, input: PickupInput): PickupRes
   return res;
 }
 
+/** What is lying on a cell. `$` carries `credits`; `:` is Scrap unless `itemId` says Copper. */
+export interface FloorOffer {
+  glyph: string;
+  credits?: number;
+  itemId?: string;
+  count?: number;
+  gear?: Omit<GearInfo, 'uid'>;
+  contractId?: number;
+}
+
+export interface FloorCollectResult extends InvResult {
+  taken: number;
+  left: number;
+}
+
+const AUTO_FLOOR = new Set(['$', ':', '+']);
+const USE_FLOOR = new Set(['§', '/', '[', '"', '(']);
+
+function floorItemId(glyph: string): string | undefined {
+  switch (glyph) {
+    case ':':
+      return SCRAP_ITEM_ID;
+    case '+':
+      return MEDPATCH_ITEM_ID;
+    case '§':
+      return DATA_CORE_ITEM_ID;
+    case '/':
+      return GEAR_ITEM_IDS.weapon;
+    case '[':
+      return GEAR_ITEM_IDS.armor;
+    case '"':
+      return GEAR_ITEM_IDS.module;
+    case '(':
+      return GEAR_ITEM_IDS.tool;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Pick up whatever is on the floor.
+ * Stepping (`how: 'step'`) takes `$`, `:` and `+` only. Gear and `§` stay until USE
+ * (`reason: 'needsUse'`). A full bag returns `reason: 'bagFull'` (UI text M1_SYS_06).
+ */
+export function collectFloor(
+  state: InventoryState,
+  offer: FloorOffer,
+  how: 'step' | 'use',
+): FloorCollectResult {
+  const glyph = offer.glyph;
+  const auto = AUTO_FLOOR.has(glyph);
+  if (how === 'step' && !auto) {
+    const left = offer.count ?? offer.credits ?? 1;
+    return fail(state, USE_FLOOR.has(glyph) ? 'needsUse' : 'unknownItem', { taken: 0, left });
+  }
+  if (glyph === '$') {
+    const amount = offer.credits ?? 0;
+    const res = addZoneCredits(state, amount);
+    return { ...res, taken: res.ok ? amount : 0, left: res.ok ? 0 : amount };
+  }
+  const itemId = offer.itemId ?? floorItemId(glyph);
+  if (!itemId) return fail(state, 'unknownItem', { taken: 0, left: offer.count ?? 1 });
+  const input: PickupInput = { itemId, count: offer.count ?? 1 };
+  if (offer.gear) input.gear = offer.gear;
+  if (offer.contractId !== undefined) input.contractId = offer.contractId;
+  return pickupItem(state, input);
+}
+
 /**
  * Drop (the whole stack or `count` pieces) from a bag slot – zone only (in base: STORE / SELL).
  * Returns `dropped` for the world to place on the floor. Contract item → contractEvents [itemLost].
@@ -385,7 +476,8 @@ export function dropItem(state: InventoryState, bagIndex: number, count?: number
   const cur = state.bag[bagIndex];
   if (!cur) return fail(state, 'emptySlot', { dropped: null });
   const n = count ?? cur.count;
-  if (!Number.isInteger(n) || n < 1 || n > cur.count) return fail(state, 'badAmount', { dropped: null });
+  if (!Number.isInteger(n) || n < 1 || n > cur.count)
+    return fail(state, 'badAmount', { dropped: null });
   const s = clone(state);
   const it = s.bag[bagIndex]!;
   const dropped = { ...copyItem(it), count: n };
@@ -499,6 +591,29 @@ export function issueTopUp(state: InventoryState, target: number): TopUpResult {
   return res;
 }
 
+function lightsLevelOf(state: GameState): LightsLevel {
+  for (const name of ['progress', 'base']) {
+    const raw = state.sections[name];
+    if (typeof raw !== 'object' || raw === null) continue;
+    const rec = raw as Record<string, unknown>;
+    for (const key of ['lights', 'lightsLevel']) {
+      const v = rec[key];
+      if (v === 0 || v === 1 || v === 2 || v === 3) return v;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Med-Patch top-up when the lift leaves base. 2 patches, or 3 when a progress/base
+ * section already says Lights ≥ 1. No lights system is created here.
+ */
+export function topUpForDeparture(state: GameState): TopUpResult {
+  const res = issueTopUp(getInventory(state), medPatchTopUpFor(lightsLevelOf(state)));
+  setInventory(state, res.state);
+  return res;
+}
+
 /**
  * Player death (§2.7): loses the whole bag, all equipped gear except Issue (weapon / armor fall back
  * to Issue Pole / Issue Suit) and zoneCr; location → base (print). Contract items (Data Core) give
@@ -512,8 +627,7 @@ export function issueTopUp(state: InventoryState, target: number): TopUpResult {
  */
 export function onDeath(state: InventoryState): DeathResult {
   const lost = snapshotAtDeath(state);
-  const nothing =
-    lost.items.length === 0 && lost.zoneCr === 0 && state.location === 'base';
+  const nothing = lost.items.length === 0 && lost.zoneCr === 0 && state.location === 'base';
   if (nothing) return { state, lost, events: [], contractEvents: [] };
   const s = clone(state);
   const contractEvents: ContractInputEvent[] = [];
@@ -566,7 +680,12 @@ export function moveFromLocker(state: InventoryState, lockerIndex: number): InvR
   if (d.stack > 1) {
     const isMed = d.category === 'medPatch';
     const n = putStackable(s.bag, moved.itemId, moved.count, isMed ? MEDPATCH_MAX : undefined);
-    if (n === 0) return fail(state, isMed && medPatchCountOf(state) >= MEDPATCH_MAX ? 'medPatchLimit' : 'bagFull', {});
+    if (n === 0)
+      return fail(
+        state,
+        isMed && medPatchCountOf(state) >= MEDPATCH_MAX ? 'medPatchLimit' : 'bagFull',
+        {},
+      );
     if (n === moved.count) s.locker[lockerIndex] = null;
     else moved.count -= n;
   } else {

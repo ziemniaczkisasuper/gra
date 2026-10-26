@@ -20,6 +20,13 @@ export interface GearInfo {
   nameId?: string;
   /** Rolled properties (M1_AFFIX_01–12) – opaque here, JSON-safe. */
   affixes?: { id: string; value: number }[];
+  /**
+   * Rolled base stat from the loot table (balans §3.1). Absent on Issue.
+   * `id` is WEAPON_MELEE_DMG / WEAPON_RANGED_DMG / ARMOR_BASE / MODULE_HP_BASE / TOOL_SALVAGE_PCT.
+   */
+  base?: { id: string; value: number };
+  /** Melee vs ranged. The shared weapon item id does not carry this; absent = melee. */
+  weaponKind?: 'melee' | 'ranged';
 }
 
 /** One occupied slot as stored in the state / save. */
@@ -154,7 +161,9 @@ export type InvFailReason =
   | 'notInBase'
   | 'notInZone'
   | 'insufficientCredits'
-  | 'badAmount';
+  | 'badAmount'
+  /** Gear and `§` stay on the ground until USE. Auto glyphs are `$`, `:`, `+`. */
+  | 'needsUse';
 
 /** Result of every operation. `ok: false` = state unchanged (same object), no events. */
 export interface InvResult {

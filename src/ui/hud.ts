@@ -31,8 +31,17 @@ export function hpText(hp: number, maxHp: number): string {
   return `${STRINGS.hpLabel} ${hpBar(hp, maxHp)} ${v}/${Math.round(maxHp)}`;
 }
 
+/** Zone HUD rows driven without the rest of the game (ui-m1 §2.1). */
+export interface InventoryHudView {
+  atRisk: number;
+  bagUsed: number;
+  bagMax: number;
+}
+
 export interface Hud {
   setHp(hp: number, maxHp: number): void;
+  /** `AT RISK: {cr} cr` and `BAG {used}/{max}` (plus `FULL` at the cap). */
+  setInventory(view: InventoryHudView): void;
   readonly element: HTMLElement;
   /** Reserved rows under HP for M1 (AT RISK, backpack, resource) – empty and hidden in M0. */
   readonly slots: { resource: HTMLElement; atRisk: HTMLElement; backpack: HTMLElement };
@@ -91,6 +100,18 @@ export function createHud(root: HTMLElement): Hud {
         clearTimeout(flashTimer);
         flashTimer = window.setTimeout(() => hpRow.classList.remove('hit'), 300);
       }
+    },
+    setInventory(view) {
+      const risk = slots.atRisk;
+      risk.hidden = false;
+      risk.textContent = `AT RISK: ${view.atRisk} cr`;
+      const bag = slots.backpack;
+      bag.hidden = false;
+      const full = view.bagMax > 0 && view.bagUsed >= view.bagMax;
+      bag.textContent = full
+        ? `BAG ${view.bagUsed}/${view.bagMax} FULL`
+        : `BAG ${view.bagUsed}/${view.bagMax}`;
+      bag.classList.toggle('is-full', full);
     },
   };
 }
