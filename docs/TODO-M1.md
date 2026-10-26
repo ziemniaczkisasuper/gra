@@ -9,11 +9,11 @@ Cel M1 (`docs/plan-produkcji.md`, „Zakres M1”): baza → winda → głęb. 1
 
 ## Etap C – szkielet pętli (najpierw)
 
-- [ ] **T16. Tryby gry.** W `GameState` dodaj `mode: 'base' | 'lift' | 'zone' | 'death' | 'report'` i przejścia między nimi (`src/core/game.ts`, `src/main.ts`). Baza to menu-hub bez ticków (mechaniki §2.14a M4): w trybie `base` pętla nie liczy ticków i auto-pauza nic nie robi. Zapis pamięta tryb (w strefie: co do ticka, jak dziś).
+- [x] **T16. Tryby gry.** W `GameState` dodaj `mode: 'base' | 'lift' | 'zone' | 'death' | 'report'` i przejścia między nimi (`src/core/game.ts`, `src/main.ts`). Baza to menu-hub bez ticków (mechaniki §2.14a M4): w trybie `base` pętla nie liczy ticków i auto-pauza nic nie robi. Zapis pamięta tryb (w strefie: co do ticka, jak dziś).
   Gotowe, gdy: nowa gra startuje w bazie, a test przechodzi `base → lift → zone → report → base` bez DOM.
-- [ ] **T17. Generator poziomu – układ.** Przenieś `docs/design/tools/levelgen_m1.py` do `src/world/levelgen/` (TS) według `docs/design/level-m1.md` §2: ziarno `expSeed`, strumienie `layout/objects/enemies/contracts/loot` przez `streamSeed` z `core/rng.ts`, motywy g1/g2/g3, korekta 40–50% pól przechodnich, `GENERATOR_VERSION = 1`, maks. 20 prób, potem mapa awaryjna (`fixed_maps_m1.py`).
+- [x] **T17. Generator poziomu – układ.** Przenieś `docs/design/tools/levelgen_m1.py` do `src/world/levelgen/` (TS) według `docs/design/level-m1.md` §2: ziarno `expSeed`, strumienie `layout/objects/enemies/contracts/loot` przez `streamSeed` z `core/rng.ts`, motywy g1/g2/g3, korekta 40–50% pól przechodnich, `GENERATOR_VERSION = 1`, maks. 20 prób, potem mapa awaryjna (`fixed_maps_m1.py`).
   Gotowe, gdy: test na 1000 ziaren × 3 głębokości przechodzi walidację §2.4, a ziarna z `docs/design/tools/przyklad-d1.txt`–`d3.txt` dają te same mapy co prototyp w Pythonie.
-- [ ] **T18. Generator poziomu – obiekty.** Kroki 3–10 z `level-m1.md` §2.2 i §3: wejście W, szyb `<`, zejście `>` / brama areny (głęb. 3), terminal `&`, nory, obiekty kontraktów (`contractSpawns` z `src/contracts/board.ts`), pula wrogów (mechaniki §2.11: 8–10 / 12–14 / 14–16, skład wg głębokości, mnożniki HP i obrażeń), skrzynie `■`, `$`, notatki. Wrogowie startują przez istniejące API walki.
+- [x] **T18. Generator poziomu – obiekty.** Kroki 3–10 z `level-m1.md` §2.2 i §3: wejście W, szyb `<`, zejście `>` / brama areny (głęb. 3), terminal `&`, nory, obiekty kontraktów (`contractSpawns` z `src/contracts/board.ts`), pula wrogów (mechaniki §2.11: 8–10 / 12–14 / 14–16, skład wg głębokości, mnożniki HP i obrażeń), skrzynie `■`, `$`, notatki. Wrogowie startują przez istniejące API walki.
   Gotowe, gdy: działają kryteria z `level-m1.md` §8 (odległości, brak wrogów 10 pól od W i `<`, `<` nigdy w korytarzu szer. 1).
 - [ ] **T19. Winda z bazy i zejście `>`.** USE na windzie w bazie → ekran przejścia `LIFT_RIDE_MS` = 2000 ms → głęb. 1 albo wybór przystanku (ui-m1 §3.6; gdy jest tylko głęb. 1, bez okna). Wejście na `>` → nowe ziarno, głębokość +1. Przy `AT RISK` > 0 okno `M1_RISK_01` (GO DOWN / STAY, fokus na STAY, pauza, zerowanie wejść, STAY nie cofa gracza), na bramie areny `M1_RISK_01B` (mechaniki §2.7a pkt 1, ui-m1 §4.3, §11.9). Ustawienie „Ask before going deeper”, domyślnie ON.
   Gotowe, gdy: da się zejść 1 → 2 → 3 → arena, a okno działa według §2.7a.
@@ -28,7 +28,7 @@ Cel M1 (`docs/plan-produkcji.md`, „Zakres M1”): baza → winda → głęb. 1
 
 ## Etap D – łup i baza
 
-- [ ] **T24. Losowanie łupu.** Nowy plik `src/loot/roll.ts`: rzadkość wg głębokości (80/18/2, 65/30/5, 50/38/12%), wartości bazowe wg `ilvl` i 12 właściwości `M1_AFFIX_01–12` z `docs/design/balans-m1.md` §3, ceny sprzedaży (mechaniki §2.12). Tylko strumień `loot`, nigdy `Math.random`. Zrzut z wrogów (~20%, Scrap 2–4), skrzynie (1–2 przedmioty, Med-Patch ~30%, Copper z głęb. 2+). Wrogowie kontraktów i drony bossa nie upuszczają łupu.
+- [x] **T24. Losowanie łupu.** Nowy plik `src/loot/roll.ts`: rzadkość wg głębokości (80/18/2, 65/30/5, 50/38/12%), wartości bazowe wg `ilvl` i 12 właściwości `M1_AFFIX_01–12` z `docs/design/balans-m1.md` §3, ceny sprzedaży (mechaniki §2.12). Tylko strumień `loot`, nigdy `Math.random`. Zrzut z wrogów (~20%, Scrap 2–4), skrzynie (1–2 przedmioty, Med-Patch ~30%, Copper z głęb. 2+). Wrogowie kontraktów i drony bossa nie upuszczają łupu.
   Gotowe, gdy: test na 20 000 poziomów daje średnio ok. 6,3 / 8,6 / 9,0 przedmiotu na poziom (mechaniki §2.12).
 - [ ] **T25. Podnoszenie i plecak w strefie.** `$`, `:` i `+` automatycznie po wejściu na pole, sprzęt i `§` przez USE (`pickupItem`). Pełny plecak → `M1_SYS_06`. Med-Patch: Q / przycisk `[+]` z licznikiem, +40 HP w 2 s, cooldown 4 s, maks. 6 (mechaniki §2.13). Statystyki założonego sprzętu (obrażenia, pancerz, afiksy) trafiają do walki; kolejność liczenia obrażeń wg mechaniki §2.11 „Pancerz”.
   Gotowe, gdy: założona broń z łupu zmienia obrażenia w walce, a pancerz redukuje ciosy wrogów (testy).
@@ -43,7 +43,7 @@ Cel M1 (`docs/plan-produkcji.md`, „Zakres M1”): baza → winda → głęb. 1
 
 ## Etap E – terminal i trwały postęp
 
-- [ ] **T30. Logika Power Lines.** Przenieś z gałęzi `wip/boty-niedokonczone` dane i typy (`src/puzzles/power-lines/`, `scripts/power-lines-fixture.py`, `tests/fixtures/power-lines-expected.json`). Dopisz solver przepływu według `docs/design/zagadki-m1/power-lines-line1.md` §4–§7a. Bez kodu FX z tej gałęzi (4 testy FX tam nie przechodzą).
+- [x] **T30. Logika Power Lines.** Przenieś z gałęzi `wip/boty-niedokonczone` dane i typy (`src/puzzles/power-lines/`, `scripts/power-lines-fixture.py`, `tests/fixtures/power-lines-expected.json`). Dopisz solver przepływu według `docs/design/zagadki-m1/power-lines-line1.md` §4–§7a. Bez kodu FX z tej gałęzi (4 testy FX tam nie przechodzą).
   Gotowe, gdy: wszystkie 8 wariantów jest rozwiązywalnych, a wyniki zgadzają się z fixture z `validate.py`.
 - [ ] **T31. Okno terminala.** Ui-m1 §5 i styl-ascii §11: układ 2-kolumnowy, przełączniki 48×48, SEND / `?` / RESET / EXIT, odbiorniki A–D z licznikami `x/y`. Otwarcie tylko bez wrogów w CHASE/ATTACK (`M1_SYS_04`), okno pauzuje świat, auto-pauza jako nakładka. Wariant na poziom wg mechaniki §2.15 (głęb. 1: 04 → 07 → 08, głęb. 2: 05 → 01 → 02, głęb. 3: 06 → 03).
   Gotowe, gdy: rozwiązanie wariantu zapisuje się na stałe, a na 568×320 pojawia się `M1_UI_ROTATE_TERMINAL` zamiast za małej siatki.
