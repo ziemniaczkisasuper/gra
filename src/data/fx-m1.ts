@@ -106,13 +106,13 @@ export const FX_COMMON_DATA = {
   },
   uiColors: {
     source: 'styl-ascii.md v1.6 §13 pkt 3',
-    panelBg: '#121821 (pełny kolor, bez rgba)',
-    controlBg: '#121821 (pełny kolor, bez rgba)',
-    hintBg: 'rgba(11,15,20,0.9) z ramką #8B98A5',
+    panelBg: 'uiPanel (pełny kolor, bez rgba)',
+    controlBg: 'uiPanel (pełny kolor, bez rgba)',
+    hintBg: 'rgba(11,15,20,0.9) z ramką hintFrame',
     hudBg: 'rgba(11,15,20,0.9)',
     tutDim: 'rgba(11,15,20,0.72)',
     textBackdrop: 'rgba(11,15,20,0.86)',
-    pulse: '#3DDC97',
+    pulse: 'safe',
     controlActiveBg: 'rgba(61,220,151,0.18)',
     rule: 'rgba dozwolone tylko na kolorach z palety (validate.py to sprawdza)',
   },
@@ -1353,504 +1353,6 @@ export const FX_M1_DATA = {
         riseRows: 0,
       },
     ],
-  },
-  fx_player_pole_swing: {
-    id: 'fx_player_pole_swing',
-    status:
-      'ZALEŻNE OD SPECYFIKACJI MECHANIK v0.6 (design/wariant-twin-stick.md – plik jeszcze nie istnieje). Kierunek zatwierdził GD (plan-produkcji.md, 25.10 22:01: Issue wręcz z zamachem łukiem 2 pola / ~90° / obszarowo); kształt łuku i czasy to propozycja GRAF (S21)',
-    trigger:
-      'playerSwing (koniec przygotowania ciosu = moment rozstrzygnięcia; także przy tapnięciu ATK bez celu)',
-    triggerPayload: {
-      entityId: 'id gracza',
-      dir: 'Dir8 {x, y} z actions.aim (albo facing, gdy aim = null)',
-      cells:
-        'komórki łuku, które logika naprawdę objęła (bez ścian i bez pól za rogiem ściany); FX rysuje tylko przecięcie z cellsByDir',
-    },
-    weapon: ['M1_GEAR_ISSUE_POLE (Issue Pole)', 'M1_GEAR_ISSUE_POLE_2_NAME (Issue Pole II)'],
-    params: {
-      POLE_ARC_RANGE: 2,
-      POLE_ARC_DEG: 90,
-      PLAYER_ATTACK_WINDUP_MS: 100,
-      PLAYER_ATTACK_CYCLE_MS: 400,
-      SWING_FX_MS: 200,
-    },
-    paramsNote:
-      'czasy z mechaniki v0.5.2 §1.3 (przygotowanie 100 ms, cykl 400 ms = 2,5 ciosu/s; Issue Mk1/Mk2 §2.3: 2,5 ciosu/s) i Balansu (twinstick.py: ARC_CYCLE 8 ticków). Do potwierdzenia w v0.6',
-    layer: 'ground',
-    priority: 25,
-    anchor: 'entity (gracz) + cellsByDir[dir]',
-    loop: false,
-    durationMs: 200,
-    arcRule:
-      'komórki o odległości Czebyszewa 1–2 od gracza, których kąt od kierunku celowania ≤ 45° (łuk 90°) – 8 komórek dla każdego z 8 kierunków. Glif = kreska styczna do łuku (- | / \\) jak ślad drąga. phase: 0 = początek zamachu, 1 = środek, 2 = koniec (zamach zgodnie z ruchem wskazówek zegara na ekranie)',
-    cellsByDir: {
-      '1,0': [
-        {
-          dx: 1,
-          dy: -1,
-          ch: '\\',
-          phase: 0,
-        },
-        {
-          dx: 2,
-          dy: -2,
-          ch: '\\',
-          phase: 0,
-        },
-        {
-          dx: 2,
-          dy: -1,
-          ch: '\\',
-          phase: 0,
-        },
-        {
-          dx: 1,
-          dy: 0,
-          ch: '|',
-          phase: 1,
-        },
-        {
-          dx: 2,
-          dy: 0,
-          ch: '|',
-          phase: 1,
-        },
-        {
-          dx: 1,
-          dy: 1,
-          ch: '/',
-          phase: 2,
-        },
-        {
-          dx: 2,
-          dy: 1,
-          ch: '/',
-          phase: 2,
-        },
-        {
-          dx: 2,
-          dy: 2,
-          ch: '/',
-          phase: 2,
-        },
-      ],
-      '1,1': [
-        {
-          dx: 1,
-          dy: 0,
-          ch: '|',
-          phase: 0,
-        },
-        {
-          dx: 2,
-          dy: 0,
-          ch: '|',
-          phase: 0,
-        },
-        {
-          dx: 1,
-          dy: 1,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: 2,
-          dy: 1,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: 1,
-          dy: 2,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: 2,
-          dy: 2,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: 0,
-          dy: 1,
-          ch: '-',
-          phase: 2,
-        },
-        {
-          dx: 0,
-          dy: 2,
-          ch: '-',
-          phase: 2,
-        },
-      ],
-      '0,1': [
-        {
-          dx: 1,
-          dy: 1,
-          ch: '/',
-          phase: 0,
-        },
-        {
-          dx: 1,
-          dy: 2,
-          ch: '/',
-          phase: 0,
-        },
-        {
-          dx: 2,
-          dy: 2,
-          ch: '/',
-          phase: 0,
-        },
-        {
-          dx: 0,
-          dy: 1,
-          ch: '-',
-          phase: 1,
-        },
-        {
-          dx: 0,
-          dy: 2,
-          ch: '-',
-          phase: 1,
-        },
-        {
-          dx: -1,
-          dy: 1,
-          ch: '\\',
-          phase: 2,
-        },
-        {
-          dx: -2,
-          dy: 2,
-          ch: '\\',
-          phase: 2,
-        },
-        {
-          dx: -1,
-          dy: 2,
-          ch: '\\',
-          phase: 2,
-        },
-      ],
-      '-1,1': [
-        {
-          dx: 0,
-          dy: 1,
-          ch: '-',
-          phase: 0,
-        },
-        {
-          dx: 0,
-          dy: 2,
-          ch: '-',
-          phase: 0,
-        },
-        {
-          dx: -1,
-          dy: 1,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: -2,
-          dy: 1,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: -2,
-          dy: 2,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: -1,
-          dy: 2,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: -1,
-          dy: 0,
-          ch: '|',
-          phase: 2,
-        },
-        {
-          dx: -2,
-          dy: 0,
-          ch: '|',
-          phase: 2,
-        },
-      ],
-      '-1,0': [
-        {
-          dx: -1,
-          dy: 1,
-          ch: '\\',
-          phase: 0,
-        },
-        {
-          dx: -2,
-          dy: 1,
-          ch: '\\',
-          phase: 0,
-        },
-        {
-          dx: -2,
-          dy: 2,
-          ch: '\\',
-          phase: 0,
-        },
-        {
-          dx: -1,
-          dy: 0,
-          ch: '|',
-          phase: 1,
-        },
-        {
-          dx: -2,
-          dy: 0,
-          ch: '|',
-          phase: 1,
-        },
-        {
-          dx: -1,
-          dy: -1,
-          ch: '/',
-          phase: 2,
-        },
-        {
-          dx: -2,
-          dy: -2,
-          ch: '/',
-          phase: 2,
-        },
-        {
-          dx: -2,
-          dy: -1,
-          ch: '/',
-          phase: 2,
-        },
-      ],
-      '-1,-1': [
-        {
-          dx: -1,
-          dy: 0,
-          ch: '|',
-          phase: 0,
-        },
-        {
-          dx: -2,
-          dy: 0,
-          ch: '|',
-          phase: 0,
-        },
-        {
-          dx: -1,
-          dy: -1,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: -2,
-          dy: -2,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: -1,
-          dy: -2,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: -2,
-          dy: -1,
-          ch: '/',
-          phase: 1,
-        },
-        {
-          dx: 0,
-          dy: -1,
-          ch: '-',
-          phase: 2,
-        },
-        {
-          dx: 0,
-          dy: -2,
-          ch: '-',
-          phase: 2,
-        },
-      ],
-      '0,-1': [
-        {
-          dx: -1,
-          dy: -1,
-          ch: '/',
-          phase: 0,
-        },
-        {
-          dx: -2,
-          dy: -2,
-          ch: '/',
-          phase: 0,
-        },
-        {
-          dx: -1,
-          dy: -2,
-          ch: '/',
-          phase: 0,
-        },
-        {
-          dx: 0,
-          dy: -1,
-          ch: '-',
-          phase: 1,
-        },
-        {
-          dx: 0,
-          dy: -2,
-          ch: '-',
-          phase: 1,
-        },
-        {
-          dx: 1,
-          dy: -1,
-          ch: '\\',
-          phase: 2,
-        },
-        {
-          dx: 1,
-          dy: -2,
-          ch: '\\',
-          phase: 2,
-        },
-        {
-          dx: 2,
-          dy: -2,
-          ch: '\\',
-          phase: 2,
-        },
-      ],
-      '1,-1': [
-        {
-          dx: 0,
-          dy: -1,
-          ch: '-',
-          phase: 0,
-        },
-        {
-          dx: 0,
-          dy: -2,
-          ch: '-',
-          phase: 0,
-        },
-        {
-          dx: 1,
-          dy: -1,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: 1,
-          dy: -2,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: 2,
-          dy: -2,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: 2,
-          dy: -1,
-          ch: '\\',
-          phase: 1,
-        },
-        {
-          dx: 1,
-          dy: 0,
-          ch: '|',
-          phase: 2,
-        },
-        {
-          dx: 2,
-          dy: 0,
-          ch: '|',
-          phase: 2,
-        },
-      ],
-    },
-    frames: [
-      {
-        ms: 50,
-        phase: {
-          '0': {
-            fg: 'playerShot',
-            bold: true,
-          },
-        },
-      },
-      {
-        ms: 50,
-        phase: {
-          '0': {
-            fg: 'rails',
-          },
-          '1': {
-            fg: 'playerShot',
-            bold: true,
-          },
-        },
-      },
-      {
-        ms: 50,
-        phase: {
-          '1': {
-            fg: 'rails',
-          },
-          '2': {
-            fg: 'playerShot',
-            bold: true,
-          },
-        },
-      },
-      {
-        ms: 50,
-        phase: {
-          '2': {
-            fg: 'rails',
-          },
-        },
-      },
-    ],
-    occupied:
-      'warstwa ground: encja na polu łuku rysuje swój znak na wierzchu (trafienie pokazuje fx_hit_enemy / fx_hit_boss, priority 80). Łuk widać tylko na wolnych polach',
-    whiff:
-      'bez trafień efekt jest ten sam (feedback, że ATK działa); logika może podać pustą listę cells przy łuku zasłoniętym ścianami – wtedy nic się nie rysuje',
-    reduceMotion: [
-      {
-        ms: 200,
-        phase: {
-          '0': {
-            fg: 'playerShot',
-          },
-          '1': {
-            fg: 'playerShot',
-          },
-          '2': {
-            fg: 'playerShot',
-          },
-        },
-      },
-    ],
-    reduceMotionNote: 'bez przemiatania: wszystkie 8 komórek naraz, bez pogrubienia, 200 ms',
-    colors:
-      '#BDEBFF = playerShot / energia gracza (styl §4), #56606B = gaśnięcie jak ślad Dash; żadnej magenty (zarezerwowana dla wrogów)',
   },
   fx_death_enemy: {
     id: 'fx_death_enemy',
@@ -3243,6 +2745,8 @@ export const FX_M1_DATA = {
   fx_evac_shaft: {
     id: 'fx_evac_shaft',
     note: 'EVAC_*_S w sekundach jak w mechanice §2.16; czasy klatek w ms = S × 1000. Decyzja R6 opcja A (GD 25.10.2026, assety v1.2): alarm przy przyjeździe windy (promień 12), wezwanie 1000 ms, ponowne wezwanie po 5 s.',
+    decision:
+      'R6 opcja A (GD; mechaniki v0.5.2 §2.9, §2.16, §2.17 pkt 7): alarm przy przyjeździe windy (promień 12), wezwanie 1000 ms, ponowne wezwanie po 5 s',
     params: {
       EVAC_CALL_HOLD_MS: 1000,
       EVAC_ARRIVE_S: {
@@ -3257,8 +2761,6 @@ export const FX_M1_DATA = {
       LIFT_RIDE_MS: 2000,
       LIFT_RIDE_SKIP_AFTER_MS: 500,
       EVAC_ALERT_MOMENT: 'arrival',
-      decision:
-        'R6 opcja A (GD; mechaniki v0.5.2 §2.9, §2.16, §2.17 pkt 7): alarm przy przyjeździe windy (promień 12), wezwanie 1000 ms, ponowne wezwanie po 5 s',
     },
     states: {
       idle: {
@@ -5655,7 +5157,7 @@ export const FX_M1_DATA = {
     trigger:
       'basePrint (po ekranie śmierci i przy pierwszym wydruku; tekst M1_BASE_03 / M1_BASE_03B albo M1_BASE_01)',
     status:
-      'ZALEŻNE OD DECYZJI PRODUCENTA (hub vs mapa, S19): wariant `map` przy bazie-mapie, wariant `hub` przy bazie-hubie. Oba trwają 600 ms',
+      'ZATWIERDZONE (wariant map albo hub, decyzja Producenta S19): wariant `map` przy bazie-mapie, wariant `hub` przy bazie-hubie. Oba trwają 600 ms',
     loop: false,
     durationMs: 600,
     params: {
@@ -5842,7 +5344,7 @@ export const FX_M1_DATA = {
             ],
           },
         ],
-        background: '#0B0F14 (pełne tło, bez mapy)',
+        background: 'background (pełne tło, bez mapy)',
         next: 'hub bazy (UI)',
         reduceMotion: [
           {
@@ -6075,7 +5577,7 @@ export const FX_M1_DATA = {
       letterBold: false,
       mainGlyph: 'cyfra zapotrzebowania (środek komórki, styl §11) – litera to tylko etykieta',
       letterColorRule:
-        '#8B98A5 we wszystkich stanach; na tle #3DDC97 (świeci) i #FF5FC8 (przepalony) #0B0F14',
+        'wall we wszystkich stanach; na tle safe (świeci) i enemy (przepalony) background',
       smallCell: {
         when: 'komórka < 30 px (telefon w poziomie)',
         action: 'etykieta nad siatką, w linii opisu, zamiast w komórce',
@@ -6134,41 +5636,6 @@ export const FX_M1_DATA = {
       note: 'ten sam znak co w komórce = powiązanie bez koloru; {device} wg M-P3 (consumer_names), bez niego DEVICE',
     },
     reduceMotion: 'same (statyczne)',
-  },
-  ui_tutorial_key_frame: {
-    id: 'ui_tutorial_key_frame',
-    context:
-      'samouczek T01: ramka UI (DOM) przy `@` z klawiszami ruchu; reguły pierwszeństwa bez zmian (§15 pkt 2, CiS v1.6 §13 pkt 2)',
-    precedence:
-      'nie zasłania wroga, `!`, odwróconej komórki ani pola `x`; gdy nad `@` jest zajęte – pod `@`; gdy i tam – chowa się na czas zapowiedzi',
-    frame: {
-      bg: 'hintBg rgba(11,15,20,0.9)',
-      border: '#8B98A5',
-    },
-    touch: 'zamiast klawiszy wskazówka joysticka (bez zmian)',
-    hideAfter: 'pierwsze ruchy; nie wraca',
-    activeVariant: 'arrows (zatwierdzone przez CiS v1.6) – do czasu akceptacji wasdTwinStick',
-    variants: {
-      arrows: {
-        status: 'ZATWIERDZONE przez CiS (styl v1.6 §13 pkt 2)',
-        layout: 'krzyż wokół `@`: ↑ nad, ← z lewej, ↓ pod, → z prawej',
-        fg: 'text',
-        bold: false,
-        note: 'po commicie Silnika 24c1276 strzałki NIE ruszają (ruch = WASD, strzałki celują), więc dla ruchu ten wariant jest nieaktualny',
-      },
-      wasdTwinStick: {
-        status: 'PROPOZYCJA – CZEKA NA CiS (Concept i Styl)',
-        when: 'sterowanie PC twin-stick (Silnik 24c1276; ui-m1.md §11: {KEY_MOVE} = „WASD”)',
-        layout: 'krzyż wokół `@`: [W] nad, [A] z lewej, [S] pod, [D] z prawej',
-        text: ['[W]', '[A]', '[S]', '[D]'],
-        fg: 'wall',
-        bold: false,
-        case: 'wielkie litery w nawiasach',
-        aimPreview:
-          'strzałki ↑ ← ↓ → zostają tylko w podglądzie kierunku ataku (celowanie strzałkami), w kolorze #C9D1D9',
-        note: 'litery tylko w ramce UI (nie w komórkach mapy) – ten sam wyjątek od styl §1 pkt 2 co dotąd',
-      },
-    },
   },
   fx_szum_glitch: {
     id: 'fx_szum_glitch',
