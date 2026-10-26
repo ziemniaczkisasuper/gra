@@ -1,11 +1,11 @@
 // Game start from the stored save (QA-M0-005): never lose a save that cannot be loaded.
 import type { GameState, NewGameOptions } from '../core/game';
 import type { LoadFailure } from './api';
-import { gameFromSave } from './index';
+import { gameFromSave, startNewGame } from './index';
 import { failLoad, loadSave, STORAGE_KEY, type KeyValueStore, type LoadOptions } from './storage';
 
 /**
- * Loads the stored save into a GameState, or a new game when there is none / it fails.
+ * Loads the stored save into a GameState, or a new game in `'base'` when there is none / it fails.
  * On failure: raw copy in a backup key, writes blocked for a newer version (storage.ts),
  * `failure` returned for save:loadFailed (main.ts → saveApi.reportLoadFailure).
  */
@@ -15,11 +15,10 @@ export function loadGame(
   opts: LoadOptions = {},
 ): { state: GameState; failure: LoadFailure | null; fromSave: boolean } {
   const r = loadSave(store, opts);
-  if (r.status === 'empty')
-    return { state: gameFromSave(null, game), failure: null, fromSave: false };
+  if (r.status === 'empty') return { state: startNewGame(game), failure: null, fromSave: false };
   if (r.status === 'failed')
     return {
-      state: gameFromSave(null, game),
+      state: startNewGame(game),
       failure: { reason: r.reason, backupKey: r.backupKey },
       fromSave: false,
     };
@@ -39,7 +38,7 @@ export function loadGame(
     }
     const f = failLoad(store, text, 'corrupt', String((e as Error)?.message ?? e), opts);
     return {
-      state: gameFromSave(null, game),
+      state: startNewGame(game),
       failure: { reason: f.reason, backupKey: f.backupKey },
       fromSave: false,
     };

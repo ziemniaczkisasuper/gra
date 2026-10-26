@@ -1,5 +1,8 @@
+import { isGameMode, type GameMode } from '../core/game';
 import { freshRngStates } from '../core/rng';
 import { getSaveSection, CORE_SAVE_KEYS } from './sections';
+
+export type { GameMode };
 
 /** Current save schema version. Bump + add a migration when the shape changes. */
 export const SAVE_VERSION = 3;
@@ -14,8 +17,13 @@ export interface SaveData {
   savedAt: number;
   /** World seed (uint32). */
   seed: number;
-  /** Simulation tick (integer >= 0). */
+  /** Simulation tick (integer >= 0). In a zone this is still the exact simulation tick. */
   tick: number;
+  /**
+   * Expedition-loop mode. Optional so older saves stay valid (no version bump).
+   * Absent means `'zone'` when the save is applied (`gameFromSave`).
+   */
+  mode?: GameMode;
   /** Generator states: { default: base generator, <stream name>: state } (uint32 each). */
   rngState: Record<string, number>;
   player: { x: number; y: number; facing: Facing };
@@ -164,6 +172,10 @@ export function validate(raw: Raw, opts: ValidateOptions = {}): SaveData {
     const max = TIME_KEYS.has(k) ? L.MAX_TIME_MS : L.MAX_PLAYTIME_MS;
     if (!inRange(raw[k], 0, max)) throw new SaveError(`Bad ${k}`);
     out[k] = raw[k] as number;
+  }
+  if (raw.mode !== undefined) {
+    if (!isGameMode(raw.mode)) throw new SaveError('Bad mode');
+    out.mode = raw.mode;
   }
   for (const [name, value] of Object.entries(raw)) {
     if (CORE_SAVE_KEYS.has(name)) continue;

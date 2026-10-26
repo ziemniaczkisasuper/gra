@@ -31,6 +31,8 @@ export const CORE_SAVE_KEYS: ReadonlySet<string> = new Set([
   'lastExportAt',
   'exportReminderSnoozedUntil',
   'iosHintHiddenUntil',
+  // optional game mode (absent on older saves = 'zone'; core/game.ts)
+  'mode',
 ]);
 
 const sections = new Map<string, SaveSection<unknown>>();

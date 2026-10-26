@@ -78,7 +78,9 @@ const bus = new EventBus<GameEvents>();
 // Test map: arena 40x20 by default, ?map=large for the 60x30 map.
 const mapParam = new URLSearchParams(location.search).get('map');
 const mapRows = MAPS[(mapParam && mapParam in MAPS ? mapParam : DEFAULT_MAP) as MapId];
-// Save v3: seed, tick, rng streams, player + module sections (save/sections.ts registry).
+// Save v3: seed, tick, optional mode, rng streams, player + module sections (save/sections.ts).
+// No stored save → startNewGame() in mode 'base' (menu-hub, no ticks). A save restores its mode
+// (absent on older saves = 'zone') and, in a zone, the exact tick.
 // QA-M0-005: a save that cannot be loaded is copied to a backup key; a newer-version save is
 // write-protected until the player decides (save:loadFailed, saveApi.resolveLoadFailure()).
 const loaded = loadGame(store, { mapRows });
@@ -180,8 +182,13 @@ function save(trigger: SaveTrigger): void {
   }
 }
 
-/** Focus loss etc.: pause (keeps an existing 'text'/'menu' reason), reset input, save now. */
+/**
+ * Focus loss etc.: pause (keeps an existing 'text'/'menu' reason), reset input, save now.
+ * In the base menu-hub there is nothing to pause (mechaniki §2.14a), so every auto-pause
+ * trigger, including the loop's takeAutoPauseRequest and idle check, is ignored.
+ */
 function autoPause(detail?: PauseDetail): void {
+  if (state.mode === 'base') return;
   loop.pause('auto', detail);
   input.reset();
   save('auto');

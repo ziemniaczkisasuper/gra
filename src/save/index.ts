@@ -36,6 +36,7 @@ export function snapshot(state: GameState, now: number): SaveData {
     savedAt: now,
     seed: state.seed,
     tick: state.tick,
+    mode: state.mode,
     rngState: state.rng.getStates(),
     player: { x: state.player.x, y: state.player.y, facing: vecToFacing(state.player.facing) },
   };
@@ -60,9 +61,11 @@ function applySections(state: GameState, data: SaveData | null): void {
 }
 
 /**
- * New GameState from a validated save (or a new game for null): seed, tick, rng streams,
+ * New GameState from a validated save (or a new game for null): seed, tick, mode, rng streams,
  * player cell + facing, then every registered section (deserialize or fresh → apply).
  * Throws SaveError if a section fails – callers must then keep the old state.
+ * `null` keeps `createGame` defaults (`mode: 'zone'` unless `opts.mode` is set).
+ * A save restores `mode`; a missing field (older saves) means `'zone'`. Tick is exact.
  */
 export function gameFromSave(data: SaveData | null, opts: NewGameOptions = {}): GameState {
   if (!data) {
@@ -76,6 +79,8 @@ export function gameFromSave(data: SaveData | null, opts: NewGameOptions = {}): 
   placePlayer(g, data.player.x, data.player.y, { ignoreEntities: true });
   g.player.facing = facingToVec(data.player.facing);
   g.tick = data.tick;
+  // Saved mode wins over opts. Absent on older saves → zone, even if opts asked for something else.
+  g.mode = data.mode ?? 'zone';
   g.rng.setStates(data.rngState);
   g.meta = {
     playtimeMs: data.playtimeMs ?? 0,
@@ -92,4 +97,13 @@ export function gameFromSave(data: SaveData | null, opts: NewGameOptions = {}): 
     throw new SaveError(`Save section failed to load: ${(e as Error)?.message ?? e}`);
   }
   return g;
+}
+
+/**
+ * Player-facing new game (no usable save): the base menu-hub, which does not tick
+ * (mechaniki §2.14a). `createGame()` / `gameFromSave(null)` stay on `'zone'` so existing
+ * simulation tests keep advancing `tick`.
+ */
+export function startNewGame(opts: NewGameOptions = {}): GameState {
+  return gameFromSave(null, { ...opts, mode: 'base' });
 }

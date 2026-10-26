@@ -9,10 +9,23 @@ import { parseMap, type TileMap } from '../world/tilemap';
 import { freshSaveMeta, type SaveMeta } from '../save/reminder';
 import { GameRng } from './rng';
 
+/** Expedition-loop screen. Only `'zone'` runs the simulation. */
+export const GAME_MODES = ['base', 'lift', 'zone', 'death', 'report'] as const;
+export type GameMode = (typeof GAME_MODES)[number];
+
+export function isGameMode(value: unknown): value is GameMode {
+  return typeof value === 'string' && (GAME_MODES as readonly string[]).includes(value);
+}
+
 /** Whole simulation state. Pure data + logic: never touches DOM or canvas. */
 export interface GameState {
-  /** Number of simulation ticks executed. */
+  /** Number of simulation ticks executed. Advances only while `mode` is `'zone'`. */
   tick: number;
+  /**
+   * Where the player is in the expedition loop.
+   * Only `'zone'` simulates. `'base'` is a menu-hub with no ticks (mechaniki §2.14a).
+   */
+  mode: GameMode;
   seed: number;
   /**
    * Game RNG. Use named streams: `state.rng.stream('combat' | 'world' | 'loot' | 'contracts')`.
@@ -68,14 +81,25 @@ export interface NewGameOptions {
   seed?: number;
   player?: { x: number; y: number };
   mapRows?: readonly string[];
+  /**
+   * Defaults to `'zone'` so combat and save tests keep ticking.
+   * The player-facing new game is `startNewGame()` (`mode: 'base'`).
+   */
+  mode?: GameMode;
 }
 
+/**
+ * Fresh simulation. `mode` defaults to `'zone'` (simulation on) when omitted.
+ */
 export function createGame(opts: NewGameOptions = {}): GameState {
+  const mode = opts.mode ?? 'zone';
+  if (!isGameMode(mode)) throw new Error(`Unknown game mode: ${String(mode)}`);
   const { map, spawns } = parseMap(opts.mapRows ?? ARENA_M0);
   const seed = (opts.seed ?? DEFAULT_SEED) >>> 0;
   const spawn = spawns.find((s) => s.ch === '@') ?? { x: 1, y: 1 };
   const state: GameState = {
     tick: 0,
+    mode,
     seed,
     rng: new GameRng(seed),
     map,
@@ -114,8 +138,20 @@ export function placePlayer(
   return true;
 }
 
-/** One fixed simulation tick. */
+/**
+ * Switch mode. Pure: no DOM, no tick change. Rejects values outside GAME_MODES.
+ * Expedition loop: base → lift → zone → report → base (`death` is a mode too).
+ */
+export function enterMode(state: GameState, mode: GameMode): void {
+  if (!isGameMode(mode)) throw new Error(`Unknown game mode: ${String(mode)}`);
+  state.mode = mode;
+}
+
+/** One fixed simulation tick. No-op outside `'zone'` (no systems, no `tick` increment). */
 export function stepGame(state: GameState, actions: ActionState, dtMs: number): void {
+  // Base is a menu-hub with no ticks (mechaniki §2.14a). Lift, death and report do not
+  // tick either: their timers are wall-clock and belong to later tasks.
+  if (state.mode !== 'zone') return;
   for (const s of systems.player) s(state, actions, dtMs);
   const p = state.player;
   stepPlayer(
@@ -131,7 +167,8 @@ export function stepGame(state: GameState, actions: ActionState, dtMs: number): 
   tickCounters(p);
   for (const e of state.entities) tickCounters(e);
   state.tick++;
-  // Playtime = unpaused simulation time only (stepGame never runs while paused/counting down).
+  // Playtime = unpaused zone time only (this function returns before here in every other mode,
+  // and the loop does not call it while paused or counting down).
   state.meta.playtimeMs += dtMs;
   state.meta.playtimeSinceExportMs += dtMs;
 }
