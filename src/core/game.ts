@@ -1,5 +1,11 @@
 import { DEFAULT_SEED } from '../data/game';
 import { ARENA_M0 } from '../data/maps';
+import {
+  onZoneStep,
+  shaftBlocksPlayer,
+  zoneControlsLocked,
+  zoneSimFrozen,
+} from '../expedition/hooks';
 import { createDummy } from '../entities/dummy';
 import { setCell, tickCounters, type Entity } from '../entities/entity';
 import { freshPlayerMoveMemory, stepPlayer, type PlayerMoveMemory } from '../entities/player-move';
@@ -149,21 +155,26 @@ export function enterMode(state: GameState, mode: GameMode): void {
 
 /** One fixed simulation tick. No-op outside `'zone'` (no systems, no `tick` increment). */
 export function stepGame(state: GameState, actions: ActionState, dtMs: number): void {
-  // Base is a menu-hub with no ticks (mechaniki §2.14a). Lift, death and report do not
-  // tick either: their timers are wall-clock and belong to later tasks.
+  // Only 'zone' simulates. Lift / evac / descent countdowns are advanceExpedition
+  // (unpaused dt from the main loop), so they run in 'lift' and freeze while paused.
   if (state.mode !== 'zone') return;
+  if (zoneSimFrozen(state)) return;
   for (const s of systems.player) s(state, actions, dtMs);
   const p = state.player;
-  stepPlayer(
-    p,
-    toDir8(actions.move),
-    memoryOf(state),
-    state.map,
-    state.tick,
-    { costs: PLAYER_STEP_COSTS, digital: actions.digitalMove === true },
-    (x, y) => isOccupied(state, x, y, p),
-  );
-  for (const s of systems.world) s(state, actions, dtMs);
+  if (!zoneControlsLocked(state)) {
+    stepPlayer(
+      p,
+      toDir8(actions.move),
+      memoryOf(state),
+      state.map,
+      state.tick,
+      { costs: PLAYER_STEP_COSTS, digital: actions.digitalMove === true },
+      (x, y) => isOccupied(state, x, y, p) || shaftBlocksPlayer(state, x, y),
+    );
+  }
+  // Confirm just opened, or the floor was replaced: enemies do not get this tick.
+  const skipWorld = onZoneStep(state, actions);
+  if (!skipWorld) for (const s of systems.world) s(state, actions, dtMs);
   tickCounters(p);
   for (const e of state.entities) tickCounters(e);
   state.tick++;

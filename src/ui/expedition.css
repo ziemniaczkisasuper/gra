@@ -1,0 +1,113 @@
+/* Lift ride, descent confirm, evacuation HUD. Host is #ui (pointer-events: none).
+   Only the modal / button surfaces take clicks. Colours come from --ui-* tokens. */
+
+.exp-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--ui-font, ui-monospace, monospace);
+  color: var(--ui-text, #d7dde5);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.exp-lift-btn,
+.exp-modal,
+.exp-ride {
+  pointer-events: auto;
+}
+
+.exp-lift-btn {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px 16px;
+  background: var(--ui-control-bg, #1c2633);
+  color: var(--ui-text-strong, #f2f5f8);
+  border: 1px solid var(--ui-frame, #5c6b7a);
+  font: inherit;
+}
+
+.exp-modal,
+.exp-ride {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 16px;
+  background: var(--ui-panel-bg, #121821);
+  border: 1px solid var(--ui-frame, #5c6b7a);
+}
+
+.exp-ride {
+  text-align: center;
+}
+
+.exp-line {
+  margin: 0 0 12px;
+}
+
+.exp-hp {
+  margin: 0 0 16px;
+}
+
+.exp-actions {
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+.exp-actions button,
+.exp-stop,
+.exp-go {
+  min-height: 48px;
+  padding: 8px 16px;
+  background: var(--ui-control-bg, #1c2633);
+  color: var(--ui-text, #d7dde5);
+  border: 1px solid var(--ui-frame, #5c6b7a);
+  font: inherit;
+}
+
+.exp-actions button.is-focused,
+.exp-stop.is-focused {
+  background: var(--ui-control-active-bg, #243246);
+  color: var(--ui-text-strong, #f2f5f8);
+  border-color: var(--ui-accent, #7eb6ff);
+}
+
+.exp-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.exp-setting {
+  margin: 12px 0 0;
+  color: var(--ui-text, #d7dde5);
+  font-size: 12px;
+}
+
+.exp-hud {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: var(--ui-hud-bg, #10161e);
+  border: 1px solid var(--ui-frame, #5c6b7a);
+  text-align: center;
+}
+
+.exp-notice {
+  margin: 4px 0 0;
+}
+
+.exp-bar {
+  margin: 0;
+  letter-spacing: 0;
+}

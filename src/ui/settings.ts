@@ -94,6 +94,38 @@ function safeStorage(): Storage | null {
   }
 }
 
+// ---- "Ask before going deeper" (M1_RISK_SETTING). Default ON.
+const ASK_KEY = 'gra.ui.askBeforeDeeper';
+/** Used only when storage is missing (node tests, private mode). */
+let askMemory: boolean | null = null;
+
+/**
+ * Whether stepping on `>` / the arena gate asks before descending.
+ * A stored `'0'` or `'1'` wins. An absent key is ON. With no Storage, the
+ * in-memory value (default ON) is used.
+ */
+export function askBeforeDeeper(store: Storage | null = safeStorage()): boolean {
+  if (!store) return askMemory ?? true;
+  try {
+    const v = store.getItem(ASK_KEY);
+    if (v === '0') return false;
+    if (v === '1') return true;
+  } catch {
+    return askMemory ?? true;
+  }
+  return true;
+}
+
+/** Persist the descent confirm. Writes storage when it is available. */
+export function setAskBeforeDeeper(on: boolean, store: Storage | null = safeStorage()): void {
+  askMemory = on;
+  try {
+    store?.setItem(ASK_KEY, on ? '1' : '0');
+  } catch {
+    askMemory = on;
+  }
+}
+
 // ---- Reduce motion (graf/styl-ascii.md §6; mechaniki 1.7): no blinking / pulsing / shake.
 const RM_KEY = 'gra.ui.reduceMotion';
 const RM_QUERY = '(prefers-reduced-motion: reduce)';

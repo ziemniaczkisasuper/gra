@@ -50,6 +50,20 @@ import { isIosNotStandalone, requestPersistentStorage } from './save/storage-env
 import { applyCssVars } from './ui/css-vars';
 import { createUi } from './ui/overlay';
 import { loadUiSettings, reduceMotion } from './ui/settings';
+import {
+  acceptDescent,
+  advanceExpedition,
+  confirmGoDown,
+  drainExpeditionEvents,
+  engagedThreat,
+  openArenaShaft,
+  stayDescent,
+  takeSimPause,
+  type ExpeditionEvent,
+} from './expedition';
+import { mountDescentConfirm } from './ui/descent-confirm';
+import { mountEvacOverlay } from './ui/evac-overlay';
+import { mountLiftRide } from './ui/lift-ride';
 
 // ---- wiring (DOM lives here and in render/ui; game logic in core/world/entities is DOM-free)
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -98,7 +112,68 @@ const saveApi = initSaveApi({
   download: downloadSaveFile,
 });
 
-installCombat(); // PROG / Gameplay: combat systems (combat/README.md)
+function forwardCombatFx(type: string, payload: unknown): void {
+  switch (type) {
+    case 'bossIntro':
+      bus.emit('bossIntro', payload as GameEvents['bossIntro']);
+      return;
+    case 'bossTelegraph':
+      bus.emit('bossTelegraph', payload as GameEvents['bossTelegraph']);
+      return;
+    case 'chargeWallHit':
+      bus.emit('chargeWallHit', payload as GameEvents['chargeWallHit']);
+      return;
+    case 'bossStunned':
+      bus.emit('bossStunned', payload as GameEvents['bossStunned']);
+      return;
+    case 'bossStunEnd':
+      bus.emit('bossStunEnd', payload as GameEvents['bossStunEnd']);
+      return;
+    case 'bossSummon':
+      bus.emit('bossSummon', payload as GameEvents['bossSummon']);
+      return;
+    case 'summonedSpawn':
+      bus.emit('summonedSpawn', payload as GameEvents['summonedSpawn']);
+      return;
+    case 'bossDefeated':
+      bus.emit('bossDefeated', payload as GameEvents['bossDefeated']);
+      return;
+    default:
+      return;
+  }
+}
+
+function forwardExpedition(event: ExpeditionEvent): void {
+  switch (event.type) {
+    case 'inventory:changed':
+      bus.emit('inventory:changed', event.payload);
+      return;
+    case 'evacCallDone':
+      bus.emit('evacCallDone', { cell: event.cell, depth: event.depth });
+      return;
+    case 'liftArrived':
+      bus.emit('liftArrived', { cell: event.cell, alertedIds: event.alertedIds });
+      return;
+    case 'levelStart':
+    case 'cooldownEnd':
+    case 'evacCallStart':
+    case 'evacCallInterrupted':
+    case 'playerEvacuated':
+    case 'liftDeparted':
+      bus.emit(event.type, { cell: event.cell });
+      return;
+    default:
+      return;
+  }
+}
+
+installCombat((type, payload) => {
+  // bossDefeated is already emitted by combat. There is no exported "wake and
+  // walk to the shaft", so the arena shaft opens here and alarm ids stay on
+  // expedition state (liftArrived). combat.ts is not modified.
+  if (type === 'bossDefeated') openArenaShaft(state);
+  forwardCombatFx(type, payload);
+}); // PROG / Gameplay: combat systems (combat/README.md)
 // LUZ contracts (prog/kontrakty-m1.md): after combat, so this tick's combat events are visible.
 installContracts((e) => (bus.emit as (t: string, p: unknown) => void)(e.type, e.payload));
 // TODO(base, M1): after evacuation / death reprint call refillContractsAtBase(state, ctx, emit)
@@ -132,6 +207,14 @@ const loop = new GameLoop({
     }
     stepGame(state, actions, dt);
     const hit = peekCombat(state)?.events.some((e) => e.type === 'playerHit') ?? false;
+    // Unpaused dt, including 'lift'. A descent confirm pauses the loop, so these freeze too.
+    advanceExpedition(state, dt, actions, { playerDamaged: hit });
+    for (const event of drainExpeditionEvents(state)) forwardExpedition(event);
+    if (takeSimPause(state)) {
+      input.reset();
+      resetPlayerMoveMemory(state);
+      if (!loop.paused) loop.pause('text');
+    }
     away.update(input.idleMs, hit);
     if (takeAutoPauseRequest(state)) autoPause('hitWhileAway'); // trigger D – combat (QA-M0-006)
     if (input.idleMs >= M0.AUTOPAUSE_IDLE_MS) autoPause(away.detail); // trigger E
@@ -166,6 +249,7 @@ const loop = new GameLoop({
     renderCombatOverlay(renderer, state, alpha, { fallbackHud: false }); // HP is in the DOM HUD
     const hp = getCombatHud(state);
     ui.hud.setHp(hp.hp, hp.maxHp);
+    syncExpedition();
   },
   requestFrame: (cb) => requestAnimationFrame(cb),
   cancelFrame: (id) => cancelAnimationFrame(id),
@@ -247,6 +331,56 @@ const ui = createUi(
   },
   { touch, settings: uiSettings },
 );
+
+function afterDescentChoice(): void {
+  input.reset();
+  resetPlayerMoveMemory(state);
+  // STAY while an enemy is in CHASE/ATTACK counts down 1 s. Otherwise resume now.
+  if (loop.paused) loop.resume({ countdown: engagedThreat(state) });
+}
+
+const liftRide = mountLiftRide(uiRoot);
+const descentConfirm = mountDescentConfirm(uiRoot, {
+  onAccept: () => {
+    acceptDescent(state);
+    afterDescentChoice();
+  },
+  onStay: () => {
+    stayDescent(state);
+    afterDescentChoice();
+  },
+  onGo: () => {
+    confirmGoDown(state);
+    afterDescentChoice();
+  },
+});
+const evacOverlay = mountEvacOverlay(uiRoot);
+
+function syncExpedition(): void {
+  liftRide.sync(state);
+  descentConfirm.sync(state);
+  evacOverlay.sync(state);
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  const target = e.target;
+  if (target instanceof HTMLElement) {
+    const tag = target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || target.isContentEditable) return;
+  }
+  if (descentConfirm.onKey(e.code)) {
+    e.preventDefault();
+    keyboard.block(e.code);
+    syncExpedition();
+    return;
+  }
+  if (liftRide.onKey(e.code, loop.paused)) {
+    e.preventDefault();
+    keyboard.block(e.code);
+    syncExpedition();
+  }
+});
 
 bus.on('paused', ({ reason, detail }) => {
   if (reason === 'tutorial') {
